@@ -141,3 +141,6 @@ vite.config.ts.timestamp-*
 .vite/
 
 .DS_Store
+
+# Server runtime-generated config
+server/opencode.json

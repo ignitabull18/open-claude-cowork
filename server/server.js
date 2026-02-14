@@ -217,6 +217,13 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// Serve web UI (renderer) for browser deployment (e.g. Coolify)
+const rendererPath = path.join(__dirname, '..', 'renderer');
+if (fs.existsSync(rendererPath)) {
+  app.use(express.static(rendererPath));
+  app.get('/', (_req, res) => res.sendFile(path.join(rendererPath, 'index.html')));
+}
+
 await initializeProviders();
 await initializeComposioSession();
 

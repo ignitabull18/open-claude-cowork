@@ -114,5 +114,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       console.error('[PRELOAD] Error fetching providers:', error);
       return { providers: ['claude'], default: 'claude' };
     }
+  },
+
+  // Check if backend is reachable (for startup banner)
+  checkBackend: async () => {
+    try {
+      const response = await fetch(`${SERVER_URL}/api/health`, { method: 'GET' });
+      return response.ok;
+    } catch (err) {
+      return false;
+    }
   }
 });

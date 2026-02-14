@@ -38,6 +38,46 @@ body {
   display: none !important;
 }
 
+.backend-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding: 10px 16px;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  box-shadow: var(--shadow-soft);
+}
+.backend-banner code {
+  background: rgba(0,0,0,0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.backend-banner button {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.4);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.backend-banner button:hover {
+  background: rgba(255,255,255,0.3);
+}
+.backend-banner .banner-divider {
+  opacity: 0.9;
+  margin: 0 4px;
+}
+
 /* App Container */
 .app-container {
   position: relative;

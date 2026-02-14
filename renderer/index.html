@@ -6,8 +6,14 @@
   <title>Claude</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="web-api.js"></script>
 </head>
 <body>
+  <div id="backendBanner" class="backend-banner hidden" role="alert">
+    <strong>Backend not running.</strong> From project root run: <code>npm run start:all</code>
+    <span class="banner-divider">or</span> <code>cd server && npm start</code> then <code>npm start</code>
+    <button type="button" id="backendBannerDismiss">Dismiss</button>
+  </div>
   <div class="app-container">
     <!-- Left Sidebar - Chat History -->
     <aside class="left-sidebar" id="leftSidebar">

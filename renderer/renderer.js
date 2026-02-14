@@ -69,12 +69,19 @@ const providerModels = {
 };
 
 // Initialize
-function init() {
+async function init() {
   updateGreeting();
   setupEventListeners();
   loadAllChats();
   renderChatHistory();
   homeInput.focus();
+  const banner = document.getElementById('backendBanner');
+  const dismissBtn = document.getElementById('backendBannerDismiss');
+  if (banner && window.electronAPI && typeof window.electronAPI.checkBackend === 'function') {
+    const ok = await window.electronAPI.checkBackend();
+    if (!ok) banner.classList.remove('hidden');
+    if (dismissBtn) dismissBtn.addEventListener('click', () => banner.classList.add('hidden'));
+  }
 }
 
 function generateId() {
