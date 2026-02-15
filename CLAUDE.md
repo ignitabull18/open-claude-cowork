@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Open Claude Cowork is an Electron desktop chat application powered by Claude Agent SDK and Composio Tool Router. It includes two main components:
+Open Claude Cowork is an Electron desktop chat application powered by Claude Agent SDK, Composio Tool Router, and optional Smithery Connect for MCP tools. It includes two main components:
 
 1. **Desktop App** — Electron + Express chat interface with multi-provider AI support (Claude Agent SDK + Opencode SDK)
 2. **Clawd** — A messaging bot (`clawd/`) that connects Claude to WhatsApp, Telegram, Signal, and iMessage
@@ -77,7 +77,7 @@ Providers are registered in `server/providers/index.js` and cached as singletons
 
 1. Frontend calls `window.electronAPI.sendMessage(message, chatId, provider, model)`
 2. Preload/web-api makes `POST /api/chat` with SSE response
-3. Server gets/creates a Composio session, passes MCP config to the selected provider
+3. Server gets/creates a Composio session and (when configured) a Smithery connection, passes MCP config to the selected provider
 4. Provider streams chunks (`text`, `tool_use`, `tool_result`, `done`) as SSE `data:` lines
 5. Frontend parses SSE, renders markdown (via `marked`), and shows inline tool calls
 
@@ -103,6 +103,10 @@ The backend integrates with Supabase for persistence, auth, file storage, and ve
 ### Composio Integration
 
 On startup, the server initializes a Composio session (`@composio/core`) which provides an MCP URL. This URL is passed to providers as `mcpServers.composio` for tool access (500+ app integrations). For Opencode, the MCP config is also written to `server/opencode.json`.
+
+### Smithery Integration
+
+Smithery Connect is an optional second tools provider. When a Smithery API key is set (via Settings or `SMITHERY_API_KEY` in `.env`), the server ensures a default connection (e.g. Exa search) and adds `mcpServers.smithery` with the Connect MCP endpoint and Bearer auth. The key can be configured in the app Settings page or via environment variable.
 
 ### Clawd (`clawd/`)
 

@@ -36,10 +36,13 @@ const settingsBackBtn = document.getElementById('settingsBackBtn');
 const settingsSidebarBtn = document.getElementById('settingsSidebarBtn');
 const settingsAnthropicKey = document.getElementById('settingsAnthropicKey');
 const settingsComposioKey = document.getElementById('settingsComposioKey');
+const settingsSmitheryKey = document.getElementById('settingsSmitheryKey');
 const settingsAnthropicToggle = document.getElementById('settingsAnthropicToggle');
 const settingsComposioToggle = document.getElementById('settingsComposioToggle');
+const settingsSmitheryToggle = document.getElementById('settingsSmitheryToggle');
 const settingsAnthropicMasked = document.getElementById('settingsAnthropicMasked');
 const settingsComposioMasked = document.getElementById('settingsComposioMasked');
+const settingsSmitheryMasked = document.getElementById('settingsSmitheryMasked');
 const settingsSaveKeysBtn = document.getElementById('settingsSaveKeysBtn');
 const settingsKeysStatus = document.getElementById('settingsKeysStatus');
 const settingsMcpList = document.getElementById('settingsMcpList');
@@ -712,8 +715,10 @@ async function loadSettings() {
     cachedSettings = data;
     if (settingsAnthropicKey) settingsAnthropicKey.value = '';
     if (settingsComposioKey) settingsComposioKey.value = '';
+    if (settingsSmitheryKey) settingsSmitheryKey.value = '';
     if (settingsAnthropicMasked) settingsAnthropicMasked.textContent = data.apiKeys?.anthropic ? 'Set (' + data.apiKeys.anthropic + ')' : 'Not set';
     if (settingsComposioMasked) settingsComposioMasked.textContent = data.apiKeys?.composio ? 'Set (' + data.apiKeys.composio + ')' : 'Not set';
+    if (settingsSmitheryMasked) settingsSmitheryMasked.textContent = data.apiKeys?.smithery ? 'Set (' + data.apiKeys.smithery + ')' : 'Not set';
     if (settingsKeysStatus) settingsKeysStatus.textContent = '';
     renderSettingsMcpList(data.mcpServers || []);
     hideSettingsMcpForm();
@@ -737,14 +742,17 @@ async function saveSettingsKeys() {
   if (!window.electronAPI || typeof window.electronAPI.updateSettings !== 'function') return;
   const anthropic = settingsAnthropicKey ? settingsAnthropicKey.value.trim() : '';
   const composio = settingsComposioKey ? settingsComposioKey.value.trim() : '';
-  const body = { apiKeys: { anthropic: anthropic || '', composio: composio || '' } };
+  const smithery = settingsSmitheryKey ? settingsSmitheryKey.value.trim() : '';
+  const body = { apiKeys: { anthropic: anthropic || '', composio: composio || '', smithery: smithery || '' } };
   try {
     const data = await window.electronAPI.updateSettings(body);
     cachedSettings.apiKeys = data.apiKeys;
     if (settingsAnthropicKey) settingsAnthropicKey.value = '';
     if (settingsComposioKey) settingsComposioKey.value = '';
+    if (settingsSmitheryKey) settingsSmitheryKey.value = '';
     if (settingsAnthropicMasked) settingsAnthropicMasked.textContent = data.apiKeys?.anthropic ? 'Set (' + data.apiKeys.anthropic + ')' : 'Not set';
     if (settingsComposioMasked) settingsComposioMasked.textContent = data.apiKeys?.composio ? 'Set (' + data.apiKeys.composio + ')' : 'Not set';
+    if (settingsSmitheryMasked) settingsSmitheryMasked.textContent = data.apiKeys?.smithery ? 'Set (' + data.apiKeys.smithery + ')' : 'Not set';
     showSettingsKeysStatus('Saved.');
   } catch (err) {
     showSettingsKeysStatus(err.message || 'Save failed', true);
@@ -887,6 +895,7 @@ function setupEventListeners() {
   if (settingsSaveKeysBtn) settingsSaveKeysBtn.addEventListener('click', saveSettingsKeys);
   if (settingsAnthropicToggle) settingsAnthropicToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsAnthropicKey, settingsAnthropicToggle));
   if (settingsComposioToggle) settingsComposioToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsComposioKey, settingsComposioToggle));
+  if (settingsSmitheryToggle) settingsSmitheryToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsSmitheryKey, settingsSmitheryToggle));
   if (settingsAddMcpBtn) settingsAddMcpBtn.addEventListener('click', () => openSettingsMcpForm(null));
   if (settingsMcpType) settingsMcpType.addEventListener('change', () => toggleSettingsMcpTypeFields(settingsMcpType.value));
   if (settingsMcpCancelBtn) settingsMcpCancelBtn.addEventListener('click', hideSettingsMcpForm);

@@ -407,12 +407,20 @@
               </div>
               <span class="settings-masked" id="settingsComposioMasked"></span>
             </div>
+            <div class="settings-field">
+              <label for="settingsSmitheryKey">Smithery API key</label>
+              <div class="settings-input-row">
+                <input type="password" id="settingsSmitheryKey" class="settings-input" placeholder="Smithery key" autocomplete="off" />
+                <button type="button" class="settings-toggle-visibility" id="settingsSmitheryToggle" title="Show">Show</button>
+              </div>
+              <span class="settings-masked" id="settingsSmitheryMasked"></span>
+            </div>
             <button type="button" class="settings-save-btn" id="settingsSaveKeysBtn">Save keys</button>
             <p class="settings-status" id="settingsKeysStatus"></p>
           </section>
           <section class="settings-section">
             <h2 class="settings-section-title">MCP servers</h2>
-            <p class="settings-section-desc">Add custom MCP servers (HTTP or local). They are merged with Composio.</p>
+            <p class="settings-section-desc">Add custom MCP servers (HTTP or local). They are merged with Composio and Smithery.</p>
             <div class="settings-mcp-list" id="settingsMcpList"></div>
             <button type="button" class="settings-add-mcp-btn" id="settingsAddMcpBtn">Add MCP server</button>
             <div class="settings-mcp-form hidden" id="settingsMcpForm">

@@ -41,6 +41,9 @@ function loadUserSettings() {
   if (data.apiKeys.composio) {
     process.env.COMPOSIO_API_KEY = data.apiKeys.composio;
   }
+  if (data.apiKeys.smithery) {
+    process.env.SMITHERY_API_KEY = data.apiKeys.smithery;
+  }
   return data;
 }
 
@@ -62,10 +65,12 @@ function maskKey(value) {
   return '••••' + trimmed.slice(-4);
 }
 
-/** Sanitize MCP server name for use as object key; must not be 'composio'. */
+/** Sanitize MCP server name for use as object key; must not be 'composio' or 'smithery'. */
 function sanitizeMcpName(name, id) {
   const s = (name || id || 'unnamed').replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 64) || 'mcp';
-  return s === 'composio' ? `user_${id || 'mcp'}` : s;
+  if (s === 'composio') return `user_${id || 'mcp'}`;
+  if (s === 'smithery') return `user_${id || 'mcp'}_s`;
+  return s;
 }
 
 // Apply user-settings API keys before any SDK that reads env
@@ -79,6 +84,87 @@ const composio = new Composio();
 
 const composioSessions = new Map();
 let defaultComposioSession = null;
+
+// Smithery Connect: default connection cache (namespace + connectionId → MCP URL + headers)
+const SMITHERY_NAMESPACE = 'open-claude-cowork';
+const SMITHERY_DEFAULT_CONNECTION_ID = 'exa';
+const SMITHERY_DEFAULT_MCP_URL = 'https://exa.run.tools';
+const SMITHERY_API_BASE = 'https://api.smithery.ai';
+let defaultSmitheryMcpConfig = null; // { url, headers } or null
+
+/**
+ * Ensure Smithery namespace exists and default connection exists; return MCP config or null.
+ * Uses SMITHERY_API_KEY from process.env (or user-settings).
+ */
+async function ensureSmitheryConnection() {
+  const apiKey = process.env.SMITHERY_API_KEY;
+  if (!apiKey || !apiKey.trim()) return null;
+
+  const key = apiKey.trim();
+  const authHeader = { Authorization: `Bearer ${key}` };
+
+  try {
+    // Ensure namespace exists (PUT is idempotent)
+    const nsRes = await fetch(`${SMITHERY_API_BASE}/namespaces/${SMITHERY_NAMESPACE}`, {
+      method: 'PUT',
+      headers: { ...authHeader, 'Content-Type': 'application/json' }
+    });
+    if (!nsRes.ok && nsRes.status !== 409) {
+      const errBody = await nsRes.text();
+      console.warn('[SMITHERY] Namespace create failed:', nsRes.status, errBody);
+      return null;
+    }
+
+    // Create or update connection (PUT with mcpUrl)
+    const putRes = await fetch(
+      `${SMITHERY_API_BASE}/connect/${SMITHERY_NAMESPACE}/${SMITHERY_DEFAULT_CONNECTION_ID}`,
+      {
+        method: 'PUT',
+        headers: { ...authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mcpUrl: SMITHERY_DEFAULT_MCP_URL })
+      }
+    );
+    if (putRes.status === 409) {
+      // Conflict: different mcpUrl; delete and recreate
+      await fetch(
+        `${SMITHERY_API_BASE}/connect/${SMITHERY_NAMESPACE}/${SMITHERY_DEFAULT_CONNECTION_ID}`,
+        { method: 'DELETE', headers: authHeader }
+      );
+      const retryRes = await fetch(
+        `${SMITHERY_API_BASE}/connect/${SMITHERY_NAMESPACE}/${SMITHERY_DEFAULT_CONNECTION_ID}`,
+        {
+          method: 'PUT',
+          headers: { ...authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mcpUrl: SMITHERY_DEFAULT_MCP_URL })
+        }
+      );
+      if (!retryRes.ok) {
+        const errBody = await retryRes.text();
+        console.warn('[SMITHERY] Connection create retry failed:', retryRes.status, errBody);
+        return null;
+      }
+    } else if (!putRes.ok) {
+      const errBody = await putRes.text();
+      console.warn('[SMITHERY] Connection create failed:', putRes.status, errBody);
+      return null;
+    }
+
+    const mcpUrl = `${SMITHERY_API_BASE}/connect/${SMITHERY_NAMESPACE}/${SMITHERY_DEFAULT_CONNECTION_ID}/mcp`;
+    return { url: mcpUrl, headers: { Authorization: `Bearer ${key}` } };
+  } catch (err) {
+    console.warn('[SMITHERY] ensureSmitheryConnection error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Get cached or freshly created Smithery MCP config. Returns { url, headers } or null.
+ */
+async function getSmitheryMcpConfig() {
+  if (defaultSmitheryMcpConfig) return defaultSmitheryMcpConfig;
+  defaultSmitheryMcpConfig = await ensureSmitheryConnection();
+  return defaultSmitheryMcpConfig;
+}
 
 // Pre-initialize Composio session on startup
 async function initializeComposioSession() {
@@ -94,6 +180,25 @@ async function initializeComposioSession() {
     console.log('[OPENCODE] Updated opencode.json with MCP config');
   } catch (error) {
     console.error('[COMPOSIO] Failed to pre-initialize session:', error.message);
+  }
+}
+
+/** Pre-initialize Smithery connection when API key is set (populates defaultSmitheryMcpConfig). */
+async function initializeSmitheryConnection() {
+  const data = readUserSettingsFile();
+  if (!data.apiKeys?.smithery?.trim()) return;
+  console.log('[SMITHERY] Pre-initializing connection');
+  try {
+    const config = await getSmitheryMcpConfig();
+    if (config) {
+      console.log('[SMITHERY] Connection ready');
+      if (defaultComposioSession) {
+        const mcpServers = buildMcpServers(defaultComposioSession);
+        updateOpencodeConfig(mcpServers);
+      }
+    }
+  } catch (err) {
+    console.error('[SMITHERY] Failed to pre-initialize:', err.message);
   }
 }
 
@@ -117,7 +222,7 @@ function readUserSettingsFile() {
 
 /**
  * Build the MCP servers config used by both Claude and Opencode providers.
- * Merges Composio (from session) with user-defined MCP from user-settings.
+ * Merges Composio (from session), Smithery (when key and connection exist), and user-defined MCP from user-settings.
  */
 function buildMcpServers(composioSession) {
   const mcpServers = {
@@ -127,6 +232,14 @@ function buildMcpServers(composioSession) {
       headers: composioSession.mcp.headers
     }
   };
+
+  if (defaultSmitheryMcpConfig) {
+    mcpServers.smithery = {
+      type: 'http',
+      url: defaultSmitheryMcpConfig.url,
+      headers: defaultSmitheryMcpConfig.headers
+    };
+  }
 
   const { mcpServers: userList } = readUserSettingsFile();
   for (const entry of userList) {
@@ -388,6 +501,9 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       console.log('[OPENCODE] Updated opencode.json with MCP config');
     }
 
+    // Ensure Smithery connection is ready when key is set (populates defaultSmitheryMcpConfig)
+    await getSmitheryMcpConfig();
+
     // Get the provider instance
     const provider = getProvider(providerName);
 
@@ -514,7 +630,8 @@ app.get('/api/settings', (_req, res) => {
     res.json({
       apiKeys: {
         anthropic: maskKey(data.apiKeys.anthropic),
-        composio: maskKey(data.apiKeys.composio)
+        composio: maskKey(data.apiKeys.composio),
+        smithery: maskKey(data.apiKeys.smithery)
       },
       mcpServers: data.mcpServers
     });
@@ -524,16 +641,18 @@ app.get('/api/settings', (_req, res) => {
   }
 });
 
-// Settings: put (merge and persist; apply keys; clear Composio sessions if composio key changed)
+// Settings: put (merge and persist; apply keys; clear Composio/Smithery caches when keys change)
 app.put('/api/settings', (req, res) => {
   try {
     const data = readUserSettingsFile();
     const body = req.body || {};
     const prevComposioKey = data.apiKeys.composio;
+    const prevSmitheryKey = data.apiKeys.smithery;
 
     if (body.apiKeys && typeof body.apiKeys === 'object') {
       if (body.apiKeys.anthropic !== undefined) data.apiKeys.anthropic = body.apiKeys.anthropic ? String(body.apiKeys.anthropic).trim() : '';
       if (body.apiKeys.composio !== undefined) data.apiKeys.composio = body.apiKeys.composio ? String(body.apiKeys.composio).trim() : '';
+      if (body.apiKeys.smithery !== undefined) data.apiKeys.smithery = body.apiKeys.smithery ? String(body.apiKeys.smithery).trim() : '';
     }
     if (body.mcpServers !== undefined) {
       if (!Array.isArray(body.mcpServers)) {
@@ -561,16 +680,22 @@ app.put('/api/settings', (req, res) => {
     // Apply API keys to process.env for next requests
     if (data.apiKeys.anthropic) process.env.ANTHROPIC_API_KEY = data.apiKeys.anthropic;
     if (data.apiKeys.composio) process.env.COMPOSIO_API_KEY = data.apiKeys.composio;
+    if (data.apiKeys.smithery) process.env.SMITHERY_API_KEY = data.apiKeys.smithery;
     if (prevComposioKey !== data.apiKeys.composio) {
       composioSessions.clear();
       defaultComposioSession = null;
       console.log('[SETTINGS] Composio key changed; cleared sessions');
     }
+    if (prevSmitheryKey !== data.apiKeys.smithery) {
+      defaultSmitheryMcpConfig = null;
+      console.log('[SETTINGS] Smithery key changed; cleared connection cache');
+    }
 
     res.json({
       apiKeys: {
         anthropic: maskKey(data.apiKeys.anthropic),
-        composio: maskKey(data.apiKeys.composio)
+        composio: maskKey(data.apiKeys.composio),
+        smithery: maskKey(data.apiKeys.smithery)
       },
       mcpServers: data.mcpServers
     });
@@ -598,6 +723,7 @@ if (fs.existsSync(rendererPath)) {
 
 await initializeProviders();
 await initializeComposioSession();
+await initializeSmitheryConnection();
 
 // Start Supabase cron jobs if configured
 if (isSupabaseConfigured()) {
