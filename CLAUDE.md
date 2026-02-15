@@ -1,0 +1,100 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Open Claude Cowork is an Electron desktop chat application powered by Claude Agent SDK and Composio Tool Router. It includes two main components:
+
+1. **Desktop App** — Electron + Express chat interface with multi-provider AI support (Claude Agent SDK + Opencode SDK)
+2. **Clawd** — A messaging bot (`clawd/`) that connects Claude to WhatsApp, Telegram, Signal, and iMessage
+
+## Running the App
+
+### Setup
+```bash
+npm install && cd server && npm install && cd ..
+cp .env.example .env  # Add ANTHROPIC_API_KEY and COMPOSIO_API_KEY
+```
+
+### Start (single command)
+```bash
+npm run start:all
+```
+
+### Start (two terminals)
+```bash
+# Terminal 1 — backend on port 3001
+npm run start:server
+
+# Terminal 2 — Electron app
+npm start
+```
+
+### Development mode (with live-reload)
+```bash
+npm run dev  # Electron only; server must be started separately
+```
+
+### Clawd bot
+```bash
+cd clawd && npm install && node cli.js
+```
+
+### Docker (web-only, no Electron)
+```bash
+docker build -t open-claude-cowork .
+docker run -p 3001:3001 -e ANTHROPIC_API_KEY=... -e COMPOSIO_API_KEY=... open-claude-cowork
+```
+
+There are no tests configured (`npm test` is a no-op placeholder).
+
+## Architecture
+
+### Three-Layer Split
+
+- **Electron process** (`main.js`, `preload.js`) — Creates the BrowserWindow, exposes `window.electronAPI` via context bridge to the renderer. `preload.js` hardcodes `SERVER_URL = http://localhost:3001`.
+- **Renderer** (`renderer/`) — Vanilla HTML/JS/CSS frontend (no framework). `renderer.js` is the entire UI logic. `web-api.js` is a browser polyfill for `window.electronAPI` using relative URLs so the same UI works when deployed as a web app (Docker/Coolify).
+- **Backend** (`server/`) — Express server (ESM, `"type": "module"`) serving SSE-streamed chat responses at `POST /api/chat`. Also serves the renderer as static files for web deployment.
+
+### Provider System
+
+The backend uses a provider abstraction (`server/providers/`) so the frontend can switch between AI backends per-request:
+
+- `BaseProvider` — Abstract class defining `query()` (async generator yielding SSE chunks), `abort()`, session management
+- `ClaudeProvider` — Wraps `@anthropic-ai/claude-agent-sdk` `query()`. Sessions are resumed via `session_id` from system init chunks.
+- `OpencodeProvider` — Wraps `@opencode-ai/sdk`. Creates its own local server on port 4096, uses event subscription for streaming. MCP config is written to `server/opencode.json` at runtime.
+
+Providers are registered in `server/providers/index.js` and cached as singletons. The frontend sends `provider` and `model` in each chat request.
+
+### Communication Flow
+
+1. Frontend calls `window.electronAPI.sendMessage(message, chatId, provider, model)`
+2. Preload/web-api makes `POST /api/chat` with SSE response
+3. Server gets/creates a Composio session, passes MCP config to the selected provider
+4. Provider streams chunks (`text`, `tool_use`, `tool_result`, `done`) as SSE `data:` lines
+5. Frontend parses SSE, renders markdown (via `marked`), and shows inline tool calls
+
+### Composio Integration
+
+On startup, the server initializes a Composio session (`@composio/core`) which provides an MCP URL. This URL is passed to providers as `mcpServers.composio` for tool access (500+ app integrations). For Opencode, the MCP config is also written to `server/opencode.json`.
+
+### Clawd (`clawd/`)
+
+Separate Node.js app (ESM) with its own `package.json` and dependency tree. Entry point is `cli.js`. Key subsystems:
+- `adapters/` — Platform-specific message adapters (WhatsApp via Baileys, Telegram via node-telegram-bot-api, Signal via signal-cli, iMessage via imsg CLI)
+- `agent/` — Claude agent runtime
+- `browser/` — Playwright-based browser automation (clawd mode or Chrome CDP mode)
+- `memory/` — Persistent memory system (MEMORY.md + daily logs in `~/clawd/`)
+- `tools/` — Built-in tools including cron scheduling
+- Config lives in `clawd/config.js`
+
+## Key Conventions
+
+- Backend uses ESM (`import`/`export`); root Electron files use CommonJS (`require`)
+- No TypeScript, no build step, no bundler — all plain JavaScript
+- No test framework configured
+- Frontend state is persisted to `localStorage` (chat history, provider/model selection)
+- Streaming uses Server-Sent Events with heartbeat comments every 15s
+- `server/opencode.json` is auto-generated at runtime — do not manually edit
+- The `.env` file in the project root is shared between the desktop app and server
