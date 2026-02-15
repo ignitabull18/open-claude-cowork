@@ -14,7 +14,7 @@ Open Claude Cowork is an Electron desktop chat application powered by Claude Age
 ### Setup
 ```bash
 npm install && cd server && npm install && cd ..
-cp .env.example .env  # Add ANTHROPIC_API_KEY and COMPOSIO_API_KEY
+cp .env.example .env  # Add API keys (see .env.example for all options)
 ```
 
 ### Start (single command)
@@ -44,7 +44,13 @@ cd clawd && npm install && node cli.js
 ### Docker (web-only, no Electron)
 ```bash
 docker build -t open-claude-cowork .
-docker run -p 3001:3001 -e ANTHROPIC_API_KEY=... -e COMPOSIO_API_KEY=... open-claude-cowork
+docker run -p 3001:3001 \
+  -e ANTHROPIC_API_KEY=... \
+  -e COMPOSIO_API_KEY=... \
+  -e SUPABASE_URL=... \
+  -e SUPABASE_ANON_KEY=... \
+  -e SUPABASE_SERVICE_ROLE_KEY=... \
+  open-claude-cowork
 ```
 
 There are no tests configured (`npm test` is a no-op placeholder).
@@ -75,6 +81,25 @@ Providers are registered in `server/providers/index.js` and cached as singletons
 4. Provider streams chunks (`text`, `tool_use`, `tool_result`, `done`) as SSE `data:` lines
 5. Frontend parses SSE, renders markdown (via `marked`), and shows inline tool calls
 
+### Supabase Integration
+
+The backend integrates with Supabase for persistence, auth, file storage, and vector search. All Supabase modules live in `server/supabase/`:
+
+- `client.js` — Admin client (service role key, bypasses RLS) + factory for per-request user clients
+- `auth-middleware.js` — `requireAuth` Express middleware: validates JWTs, falls back to anonymous if `ALLOW_ANONYMOUS=true`
+- `chat-store.js` — Chat/message CRUD against Postgres
+- `session-store.js` — Provider session persistence (in-memory Map cache with DB backing)
+- `storage.js` — File upload/download via Supabase Storage (signed URLs, 1hr expiry)
+- `embeddings.js` — OpenAI `text-embedding-3-small` vector embeddings, semantic search via pgvector
+- `cron.js` — pg_cron for DB cleanup + Node.js setInterval for embedding pipeline (every 5min)
+- `migrations/001_initial_schema.sql` — Full schema (profiles, chats, messages, provider_sessions, attachments, embeddings) with RLS
+
+**Database tables:** `profiles`, `chats`, `messages`, `provider_sessions`, `attachments`, `embeddings` — all with per-user RLS.
+
+**Auth flow:** Frontend uses Supabase Auth via CDN (`renderer/auth.js`). Token is stored in the preload/web-api layer and injected as `Authorization: Bearer <token>` on all API calls.
+
+**Graceful degradation:** When Supabase env vars are not set, the app works without auth/persistence (localStorage fallback). When `ALLOW_ANONYMOUS=true`, unauthenticated requests proceed with `userId = 'anonymous'`.
+
 ### Composio Integration
 
 On startup, the server initializes a Composio session (`@composio/core`) which provides an MCP URL. This URL is passed to providers as `mcpServers.composio` for tool access (500+ app integrations). For Opencode, the MCP config is also written to `server/opencode.json`.
@@ -94,7 +119,8 @@ Separate Node.js app (ESM) with its own `package.json` and dependency tree. Entr
 - Backend uses ESM (`import`/`export`); root Electron files use CommonJS (`require`)
 - No TypeScript, no build step, no bundler — all plain JavaScript
 - No test framework configured
-- Frontend state is persisted to `localStorage` (chat history, provider/model selection)
+- Frontend state is persisted to Supabase (when configured) with `localStorage` fallback. Provider/model selection always uses localStorage.
+- `renderer/auth.js` handles Supabase Auth (CDN-loaded, no bundler). Token refresh is automatic.
 - Streaming uses Server-Sent Events with heartbeat comments every 15s
 - `server/opencode.json` is auto-generated at runtime — do not manually edit
 - The `.env` file in the project root is shared between the desktop app and server

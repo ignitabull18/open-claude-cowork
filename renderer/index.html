@@ -6,7 +6,9 @@
   <title>Claude</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="web-api.js"></script>
+  <script src="auth.js"></script>
 </head>
 <body>
   <div id="backendBanner" class="backend-banner hidden" role="alert">
@@ -31,8 +33,30 @@
           </svg>
         </button>
       </div>
+      <div class="search-container hidden" id="searchContainer">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search messages..." autocomplete="off" />
+      </div>
+      <div class="search-results hidden" id="searchResults"></div>
       <div class="chat-history-list" id="chatHistoryList">
         <!-- Chat history items will be added here -->
+      </div>
+      <div class="left-sidebar-footer">
+        <span class="user-email-label" id="userEmailLabel"></span>
+        <button type="button" class="signout-sidebar-btn hidden" id="signoutSidebarBtn" title="Sign out">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          <span>Sign Out</span>
+        </button>
+        <button type="button" class="settings-sidebar-btn" id="settingsSidebarBtn" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Settings</span>
+        </button>
       </div>
     </aside>
 
@@ -45,6 +69,36 @@
 
     <!-- Main Content -->
     <div class="main-content">
+      <!-- Auth View (shown when not logged in) -->
+      <div class="auth-view hidden" id="authView">
+        <div class="auth-container">
+          <h1 class="auth-title">Open Claude Cowork</h1>
+          <p class="auth-subtitle">Sign in to sync your chats across devices</p>
+          <form id="authForm" class="auth-form">
+            <div class="auth-tabs">
+              <button type="button" class="auth-tab active" data-tab="signin">Sign In</button>
+              <button type="button" class="auth-tab" data-tab="signup">Sign Up</button>
+            </div>
+            <div class="auth-field">
+              <label for="authEmail">Email</label>
+              <input type="email" id="authEmail" class="auth-input" placeholder="you@example.com" required />
+            </div>
+            <div class="auth-field">
+              <label for="authPassword">Password</label>
+              <input type="password" id="authPassword" class="auth-input" placeholder="Password" required minlength="6" />
+            </div>
+            <div class="auth-field auth-signup-field hidden" id="authDisplayNameField">
+              <label for="authDisplayName">Display Name</label>
+              <input type="text" id="authDisplayName" class="auth-input" placeholder="Your name" />
+            </div>
+            <button type="submit" class="auth-submit-btn" id="authSubmitBtn">Sign In</button>
+            <p class="auth-error hidden" id="authError"></p>
+            <p class="auth-info hidden" id="authInfo"></p>
+          </form>
+          <button type="button" class="auth-skip-btn" id="authSkipBtn">Continue without account</button>
+        </div>
+      </div>
+
       <!-- Home View (shown when no messages) -->
       <div class="home-view" id="homeView">
       <div class="greeting-section">
@@ -322,6 +376,87 @@
 
       </aside>
     </div>
+
+      <!-- Settings View -->
+      <div class="settings-view hidden" id="settingsView">
+        <header class="settings-header">
+          <button type="button" class="settings-back-btn" id="settingsBackBtn" title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <h1 class="settings-title">Settings</h1>
+        </header>
+        <div class="settings-content">
+          <section class="settings-section">
+            <h2 class="settings-section-title">Provider tokens</h2>
+            <p class="settings-section-desc">API keys are stored locally and override .env. They are never sent to the client in full.</p>
+            <div class="settings-field">
+              <label for="settingsAnthropicKey">Anthropic API key</label>
+              <div class="settings-input-row">
+                <input type="password" id="settingsAnthropicKey" class="settings-input" placeholder="sk-ant-..." autocomplete="off" />
+                <button type="button" class="settings-toggle-visibility" id="settingsAnthropicToggle" title="Show">Show</button>
+              </div>
+              <span class="settings-masked" id="settingsAnthropicMasked"></span>
+            </div>
+            <div class="settings-field">
+              <label for="settingsComposioKey">Composio API key</label>
+              <div class="settings-input-row">
+                <input type="password" id="settingsComposioKey" class="settings-input" placeholder="Composio key" autocomplete="off" />
+                <button type="button" class="settings-toggle-visibility" id="settingsComposioToggle" title="Show">Show</button>
+              </div>
+              <span class="settings-masked" id="settingsComposioMasked"></span>
+            </div>
+            <button type="button" class="settings-save-btn" id="settingsSaveKeysBtn">Save keys</button>
+            <p class="settings-status" id="settingsKeysStatus"></p>
+          </section>
+          <section class="settings-section">
+            <h2 class="settings-section-title">MCP servers</h2>
+            <p class="settings-section-desc">Add custom MCP servers (HTTP or local). They are merged with Composio.</p>
+            <div class="settings-mcp-list" id="settingsMcpList"></div>
+            <button type="button" class="settings-add-mcp-btn" id="settingsAddMcpBtn">Add MCP server</button>
+            <div class="settings-mcp-form hidden" id="settingsMcpForm">
+              <h3 class="settings-mcp-form-title" id="settingsMcpFormTitle">Add MCP server</h3>
+              <div class="settings-field">
+                <label for="settingsMcpName">Name</label>
+                <input type="text" id="settingsMcpName" class="settings-input" placeholder="e.g. my_tools" />
+              </div>
+              <div class="settings-field">
+                <label>Type</label>
+                <select id="settingsMcpType" class="settings-select">
+                  <option value="http">HTTP (remote URL)</option>
+                  <option value="local">Local (command)</option>
+                </select>
+              </div>
+              <div class="settings-mcp-type-fields" id="settingsMcpHttpFields">
+                <div class="settings-field">
+                  <label for="settingsMcpUrl">URL</label>
+                  <input type="url" id="settingsMcpUrl" class="settings-input" placeholder="https://..." />
+                </div>
+                <div class="settings-field">
+                  <label for="settingsMcpHeaders">Headers (JSON)</label>
+                  <input type="text" id="settingsMcpHeaders" class="settings-input" placeholder='{"Authorization": "Bearer ..."}' />
+                </div>
+              </div>
+              <div class="settings-mcp-type-fields hidden" id="settingsMcpLocalFields">
+                <div class="settings-field">
+                  <label for="settingsMcpCommand">Command</label>
+                  <input type="text" id="settingsMcpCommand" class="settings-input" placeholder="npx" />
+                </div>
+                <div class="settings-field">
+                  <label for="settingsMcpArgs">Arguments (comma-separated)</label>
+                  <input type="text" id="settingsMcpArgs" class="settings-input" placeholder="-y, @modelcontextprotocol/server-filesystem, /path" />
+                </div>
+              </div>
+              <div class="settings-mcp-form-actions">
+                <button type="button" class="settings-mcp-cancel-btn" id="settingsMcpCancelBtn">Cancel</button>
+                <button type="button" class="settings-mcp-save-btn" id="settingsMcpSaveBtn">Save</button>
+              </div>
+            </div>
+            <p class="settings-status" id="settingsMcpStatus"></p>
+          </section>
+        </div>
+      </div>
     </div><!-- end main-content -->
 
     <!-- Right Sidebar Expand Button (visible when collapsed) -->

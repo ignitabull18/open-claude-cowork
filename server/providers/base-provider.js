@@ -1,3 +1,5 @@
+import { getProviderSession } from '../supabase/session-store.js';
+
 /**
  * Base provider interface for AI agent providers.
  * All providers must implement these methods.
@@ -40,12 +42,26 @@ export class BaseProvider {
   }
 
   /**
-   * Get or create a session for a chat
+   * Get or create a session for a chat.
+   * Checks in-memory Map first, falls back to Supabase DB lookup.
    * @param {string} chatId
-   * @returns {string|null} Session ID if exists
+   * @returns {Promise<string|null>} Session ID if exists
    */
-  getSession(chatId) {
-    return this.sessions.get(chatId) || null;
+  async getSession(chatId) {
+    const cached = this.sessions.get(chatId);
+    if (cached) return cached;
+
+    // Fall back to DB
+    try {
+      const dbSession = await getProviderSession(chatId, this.name);
+      if (dbSession) {
+        this.sessions.set(chatId, dbSession);
+        return dbSession;
+      }
+    } catch {
+      // DB unavailable — proceed without session
+    }
+    return null;
   }
 
   /**

@@ -68,7 +68,7 @@ export class ClaudeProvider extends BaseProvider {
     };
 
     // Check for existing session - matches server.js session resumption logic
-    const existingSessionId = chatId ? this.getSession(chatId) : null;
+    const existingSessionId = chatId ? await this.getSession(chatId) : null;
     console.log('[Claude] Existing session ID for', chatId, ':', existingSessionId || 'none (new chat)');
 
     // If we have an existing session, resume it

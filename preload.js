@@ -4,9 +4,22 @@ const SERVER_URL = 'http://localhost:3001';
 
 // Store the current abort controller for cancelling requests
 let currentAbortController = null;
+// Auth token for Supabase JWT
+let authToken = null;
+
+// Helper to build headers with optional auth token
+function buildHeaders(extra = {}) {
+  const headers = { 'Content-Type': 'application/json', ...extra };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  return headers;
+}
 
 // Expose safe API to renderer process via contextBridge
 contextBridge.exposeInMainWorld('electronAPI', {
+  setAuthToken: (token) => { authToken = token; },
+  getAuthToken: () => authToken,
   // Abort the current ongoing request (client-side)
   abortCurrentRequest: () => {
     if (currentAbortController) {
@@ -22,9 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     try {
       const response = await fetch(`${SERVER_URL}/api/abort`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({ chatId, provider })
       });
       const result = await response.json();
@@ -55,9 +66,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
       fetch(`${SERVER_URL}/api/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({ message, chatId, provider, model }),
         signal
       })
@@ -123,6 +132,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return response.ok;
     } catch (err) {
       return false;
+    }
+  },
+
+  getSettings: async () => {
+    try {
+      const response = await fetch(`${SERVER_URL}/api/settings`);
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    } catch (err) {
+      throw new Error('Failed to load settings: ' + err.message);
+    }
+  },
+
+  updateSettings: async (body) => {
+    try {
+      const response = await fetch(`${SERVER_URL}/api/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'HTTP ' + response.status);
+      }
+      return await response.json();
+    } catch (err) {
+      throw new Error(err.message || 'Failed to save settings');
     }
   }
 });

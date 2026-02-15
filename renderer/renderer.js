@@ -30,6 +30,57 @@ const leftSidebar = document.getElementById('leftSidebar');
 const leftSidebarToggle = document.getElementById('leftSidebarToggle');
 const leftSidebarExpand = document.getElementById('leftSidebarExpand');
 
+// DOM Elements - Settings
+const settingsView = document.getElementById('settingsView');
+const settingsBackBtn = document.getElementById('settingsBackBtn');
+const settingsSidebarBtn = document.getElementById('settingsSidebarBtn');
+const settingsAnthropicKey = document.getElementById('settingsAnthropicKey');
+const settingsComposioKey = document.getElementById('settingsComposioKey');
+const settingsAnthropicToggle = document.getElementById('settingsAnthropicToggle');
+const settingsComposioToggle = document.getElementById('settingsComposioToggle');
+const settingsAnthropicMasked = document.getElementById('settingsAnthropicMasked');
+const settingsComposioMasked = document.getElementById('settingsComposioMasked');
+const settingsSaveKeysBtn = document.getElementById('settingsSaveKeysBtn');
+const settingsKeysStatus = document.getElementById('settingsKeysStatus');
+const settingsMcpList = document.getElementById('settingsMcpList');
+const settingsAddMcpBtn = document.getElementById('settingsAddMcpBtn');
+const settingsMcpForm = document.getElementById('settingsMcpForm');
+const settingsMcpFormTitle = document.getElementById('settingsMcpFormTitle');
+const settingsMcpName = document.getElementById('settingsMcpName');
+const settingsMcpType = document.getElementById('settingsMcpType');
+const settingsMcpUrl = document.getElementById('settingsMcpUrl');
+const settingsMcpHeaders = document.getElementById('settingsMcpHeaders');
+const settingsMcpCommand = document.getElementById('settingsMcpCommand');
+const settingsMcpArgs = document.getElementById('settingsMcpArgs');
+const settingsMcpHttpFields = document.getElementById('settingsMcpHttpFields');
+const settingsMcpLocalFields = document.getElementById('settingsMcpLocalFields');
+const settingsMcpCancelBtn = document.getElementById('settingsMcpCancelBtn');
+const settingsMcpSaveBtn = document.getElementById('settingsMcpSaveBtn');
+const settingsMcpStatus = document.getElementById('settingsMcpStatus');
+
+// DOM Elements - Auth
+const authView = document.getElementById('authView');
+const authForm = document.getElementById('authForm');
+const authEmail = document.getElementById('authEmail');
+const authPassword = document.getElementById('authPassword');
+const authDisplayName = document.getElementById('authDisplayName');
+const authDisplayNameField = document.getElementById('authDisplayNameField');
+const authSubmitBtn = document.getElementById('authSubmitBtn');
+const authError = document.getElementById('authError');
+const authInfo = document.getElementById('authInfo');
+const authSkipBtn = document.getElementById('authSkipBtn');
+const userEmailLabel = document.getElementById('userEmailLabel');
+const signoutSidebarBtn = document.getElementById('signoutSidebarBtn');
+
+// DOM Elements - Search
+const searchContainer = document.getElementById('searchContainer');
+const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+
+// Auth state
+let authMode = 'signin'; // 'signin' or 'signup'
+let isAuthEnabled = false; // true if Supabase is configured
+
 // State
 let isFirstMessage = true;
 let todos = [];
@@ -46,6 +97,13 @@ let browserDisplayMode = 'hidden'; // 'inline' | 'sidebar' | 'hidden'
 // Multi-chat state
 let allChats = [];
 let currentChatId = null;
+
+// Main view state (home | chat | settings)
+let currentMainView = 'home';
+let lastViewBeforeSettings = 'home';
+// Cached settings for MCP list (from GET /api/settings)
+let cachedSettings = { apiKeys: {}, mcpServers: [] };
+let settingsMcpEditingId = null; // id when editing an MCP entry, null when adding
 
 // Model configurations per provider
 const providerModels = {
@@ -72,9 +130,9 @@ const providerModels = {
 async function init() {
   updateGreeting();
   setupEventListeners();
-  loadAllChats();
-  renderChatHistory();
-  homeInput.focus();
+  setupAuthListeners();
+
+  // Check backend health banner
   const banner = document.getElementById('backendBanner');
   const dismissBtn = document.getElementById('backendBannerDismiss');
   if (banner && window.electronAPI && typeof window.electronAPI.checkBackend === 'function') {
@@ -82,10 +140,222 @@ async function init() {
     if (!ok) banner.classList.remove('hidden');
     if (dismissBtn) dismissBtn.addEventListener('click', () => banner.classList.add('hidden'));
   }
+
+  // Initialize auth — gate the app on auth state
+  if (window.appAuth) {
+    window.appAuth.initAuth((session) => {
+      isAuthEnabled = true;
+      onAuthReady(session);
+    });
+  } else {
+    // No auth module — fall through to normal flow
+    loadAllChats();
+    renderChatHistory();
+    homeInput.focus();
+  }
+}
+
+// Called when auth is initialized (session may be null)
+function onAuthReady(session) {
+  if (session) {
+    showAppAfterAuth(session);
+  } else {
+    showAuthView();
+  }
+}
+
+// Show the auth view
+function showAuthView() {
+  if (authView) {
+    authView.classList.remove('hidden');
+    homeView.classList.add('hidden');
+    chatView.classList.add('hidden');
+    leftSidebar.classList.add('hidden');
+  }
+}
+
+// Show the app after successful auth
+function showAppAfterAuth(session) {
+  if (authView) authView.classList.add('hidden');
+  leftSidebar.classList.remove('hidden');
+
+  // Update user display
+  const user = session?.user;
+  if (userEmailLabel && user) {
+    userEmailLabel.textContent = user.email || '';
+  }
+  if (signoutSidebarBtn) {
+    signoutSidebarBtn.classList.remove('hidden');
+  }
+
+  // Show search bar when authenticated with API
+  if (searchContainer && useApi()) {
+    searchContainer.classList.remove('hidden');
+    setupSearchListeners();
+  }
+
+  // Load chats (from API if Supabase, else localStorage)
+  loadAllChats();
+  renderChatHistory();
+
+  // Migrate localStorage to Supabase on first login
+  if (user && !localStorage.getItem('supabase_migrated')) {
+    migrateLocalStorageToSupabase();
+  }
+
+  homeInput.focus();
+}
+
+// Setup auth form listeners
+function setupAuthListeners() {
+  if (!authForm) return;
+
+  // Tab switching
+  document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      authMode = tab.dataset.tab;
+      document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === authMode));
+      authSubmitBtn.textContent = authMode === 'signup' ? 'Sign Up' : 'Sign In';
+      if (authDisplayNameField) {
+        authDisplayNameField.classList.toggle('hidden', authMode !== 'signup');
+      }
+      hideAuthMessages();
+    });
+  });
+
+  // Form submit
+  authForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideAuthMessages();
+    authSubmitBtn.disabled = true;
+
+    try {
+      if (authMode === 'signup') {
+        await window.appAuth.signUp(authEmail.value, authPassword.value, authDisplayName?.value);
+        showAuthInfo('Check your email to confirm your account, then sign in.');
+        authSubmitBtn.disabled = false;
+      } else {
+        const data = await window.appAuth.signIn(authEmail.value, authPassword.value);
+        showAppAfterAuth(data.session);
+      }
+    } catch (err) {
+      showAuthError(err.message);
+      authSubmitBtn.disabled = false;
+    }
+  });
+
+  // Skip auth
+  if (authSkipBtn) {
+    authSkipBtn.addEventListener('click', () => {
+      if (authView) authView.classList.add('hidden');
+      leftSidebar.classList.remove('hidden');
+      loadAllChats();
+      renderChatHistory();
+      homeInput.focus();
+    });
+  }
+
+  // Sign out
+  if (signoutSidebarBtn) {
+    signoutSidebarBtn.addEventListener('click', async () => {
+      await window.appAuth.signOut();
+      allChats = [];
+      currentChatId = null;
+      chatMessages.textContent = '';
+      renderChatHistory();
+      signoutSidebarBtn.classList.add('hidden');
+      if (userEmailLabel) userEmailLabel.textContent = '';
+      showAuthView();
+    });
+  }
+}
+
+function showAuthError(msg) {
+  if (authError) { authError.textContent = msg; authError.classList.remove('hidden'); }
+}
+function showAuthInfo(msg) {
+  if (authInfo) { authInfo.textContent = msg; authInfo.classList.remove('hidden'); }
+}
+function hideAuthMessages() {
+  if (authError) authError.classList.add('hidden');
+  if (authInfo) authInfo.classList.add('hidden');
+}
+
+// One-time migration of localStorage chats to Supabase
+async function migrateLocalStorageToSupabase() {
+  try {
+    const saved = localStorage.getItem('allChats');
+    if (!saved) {
+      localStorage.setItem('supabase_migrated', 'true');
+      return;
+    }
+    const localChats = JSON.parse(saved);
+    if (!localChats.length) {
+      localStorage.setItem('supabase_migrated', 'true');
+      return;
+    }
+
+    console.log('[Migration] Migrating', localChats.length, 'chats to Supabase');
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    const base = apiBase();
+
+    for (const chat of localChats) {
+      try {
+        // Create the chat
+        await fetch(base + '/api/chats', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ id: chat.id, title: chat.title, provider: chat.provider, model: chat.model })
+        });
+
+        // Add messages
+        for (const msg of (chat.messages || [])) {
+          const role = msg.class?.includes('user') ? 'user' : 'assistant';
+          await fetch(base + '/api/messages', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ chatId: chat.id, role, content: msg.content, html: msg.html || '' })
+          });
+        }
+      } catch (err) {
+        console.error('[Migration] Error migrating chat', chat.id, err);
+      }
+    }
+
+    localStorage.setItem('supabase_migrated', 'true');
+    console.log('[Migration] Complete');
+
+    // Reload chats from API
+    loadAllChats();
+    renderChatHistory();
+  } catch (err) {
+    console.error('[Migration] Failed:', err);
+  }
 }
 
 function generateId() {
   return 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+// Helper: get auth headers for API calls
+function getAuthHeaders() {
+  if (window.appAuth && window.appAuth.getAuthHeaders) {
+    return window.appAuth.getAuthHeaders();
+  }
+  if (window._authToken) {
+    return { 'Authorization': 'Bearer ' + window._authToken };
+  }
+  return {};
+}
+
+// Helper: build API base URL
+function apiBase() {
+  return window._apiBase || '';
+}
+
+// Helper: check if we should use API (Supabase) for persistence
+function useApi() {
+  return isAuthEnabled && window.appAuth && window.appAuth.isAuthenticated();
 }
 
 // Save current chat state
@@ -103,12 +373,10 @@ function saveState() {
     messages: Array.from(chatMessages.children).map(msg => {
       const contentDiv = msg.querySelector('.message-content');
       const rawContent = contentDiv?.dataset.rawContent || contentDiv?.textContent || '';
-
-      // Save complete message structure including tool calls
       return {
         class: msg.className,
         content: rawContent,
-        html: contentDiv?.innerHTML || '' // Save rendered HTML to restore tool calls
+        html: contentDiv?.innerHTML || ''
       };
     }),
     todos,
@@ -118,7 +386,7 @@ function saveState() {
     updatedAt: Date.now()
   };
 
-  // Update or add chat in allChats
+  // Update local allChats array
   const index = allChats.findIndex(c => c.id === currentChatId);
   if (index >= 0) {
     allChats[index] = chatData;
@@ -126,43 +394,86 @@ function saveState() {
     allChats.unshift(chatData);
   }
 
-  // Save to localStorage
-  localStorage.setItem('allChats', JSON.stringify(allChats));
+  // Persist: API if authenticated, otherwise localStorage
+  if (useApi()) {
+    fetch(apiBase() + '/api/chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ id: currentChatId, title: chatData.title, provider: selectedProvider, model: selectedModel })
+    }).catch(err => console.error('[Save] API error:', err));
+  } else {
+    localStorage.setItem('allChats', JSON.stringify(allChats));
+  }
+
   localStorage.setItem('currentChatId', currentChatId);
-  // Also save current provider/model globally
   localStorage.setItem('selectedProvider', selectedProvider);
   localStorage.setItem('selectedModel', selectedModel);
 
   renderChatHistory();
 }
 
-// Load all chats from localStorage
+// Load all chats — from API if authenticated, else localStorage
 function loadAllChats() {
+  // Restore global provider/model settings from localStorage (always)
+  const savedProvider = localStorage.getItem('selectedProvider');
+  const savedModel = localStorage.getItem('selectedModel');
+  if (savedProvider && providerModels[savedProvider]) {
+    selectedProvider = savedProvider;
+    updateProviderUI(savedProvider);
+  }
+  if (savedModel) {
+    selectedModel = savedModel;
+    const models = providerModels[selectedProvider] || [];
+    const modelInfo = models.find(m => m.value === savedModel);
+    if (modelInfo) {
+      document.querySelectorAll('.model-selector .model-label').forEach(l => {
+        l.textContent = modelInfo.label;
+      });
+    }
+  }
+
+  if (useApi()) {
+    // Load from Supabase via API
+    fetch(apiBase() + '/api/chats', {
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }
+    })
+      .then(r => r.json())
+      .then(data => {
+        allChats = (data.chats || []).map(c => ({
+          id: c.id,
+          title: c.title,
+          provider: c.provider,
+          model: c.model,
+          updatedAt: new Date(c.updated_at).getTime(),
+          messages: [], // lazy-loaded on click
+          todos: [],
+          toolCalls: []
+        }));
+        renderChatHistory();
+
+        // Restore current chat
+        currentChatId = localStorage.getItem('currentChatId');
+        if (currentChatId) {
+          const chat = allChats.find(c => c.id === currentChatId);
+          if (chat) loadChat(chat);
+        }
+      })
+      .catch(err => {
+        console.error('[LoadChats] API error, falling back to localStorage:', err);
+        loadAllChatsFromLocalStorage();
+      });
+  } else {
+    loadAllChatsFromLocalStorage();
+  }
+}
+
+// Fallback: load from localStorage
+function loadAllChatsFromLocalStorage() {
   try {
     const saved = localStorage.getItem('allChats');
     allChats = saved ? JSON.parse(saved) : [];
     currentChatId = localStorage.getItem('currentChatId');
 
-    // Restore global provider/model settings
-    const savedProvider = localStorage.getItem('selectedProvider');
-    const savedModel = localStorage.getItem('selectedModel');
-    if (savedProvider && providerModels[savedProvider]) {
-      selectedProvider = savedProvider;
-      updateProviderUI(savedProvider);
-    }
-    if (savedModel) {
-      selectedModel = savedModel;
-      // Find the model label to update UI
-      const models = providerModels[selectedProvider] || [];
-      const modelInfo = models.find(m => m.value === savedModel);
-      if (modelInfo) {
-        document.querySelectorAll('.model-selector .model-label').forEach(l => {
-          l.textContent = modelInfo.label;
-        });
-      }
-    }
-
-    // If there's a current chat, load it
     if (currentChatId) {
       const chat = allChats.find(c => c.id === currentChatId);
       if (chat) {
@@ -217,7 +528,6 @@ function loadChat(chat) {
       document.querySelectorAll('.model-selector .model-label').forEach(l => {
         l.textContent = modelInfo.label;
       });
-      // Update checkmarks in model menu
       document.querySelectorAll('.model-menu .dropdown-item').forEach(item => {
         const isSelected = item.dataset.value === chat.model;
         item.classList.toggle('selected', isSelected);
@@ -229,12 +539,41 @@ function loadChat(chat) {
     }
   }
 
-  // Switch to chat view
   switchToChatView();
 
-  // Restore messages
-  chatMessages.innerHTML = '';
-  (chat.messages || []).forEach(msgData => {
+  // If chat has no messages loaded and we're using API, fetch from server
+  if (useApi() && (!chat.messages || chat.messages.length === 0)) {
+    chatMessages.textContent = '';
+    fetch(apiBase() + '/api/chats/' + chat.id, {
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }
+    })
+      .then(r => r.json())
+      .then(data => {
+        const messages = (data.messages || []).map(m => ({
+          class: 'message ' + m.role,
+          content: m.content,
+          html: m.html || ''
+        }));
+        renderChatMessages(messages);
+      })
+      .catch(err => {
+        console.error('[LoadChat] API error:', err);
+        renderChatMessages(chat.messages || []);
+      });
+  } else {
+    renderChatMessages(chat.messages || []);
+  }
+
+  renderTodos();
+  scrollToBottom();
+  renderChatHistory();
+  localStorage.setItem('currentChatId', currentChatId);
+}
+
+// Render messages into the chat container
+function renderChatMessages(messages) {
+  chatMessages.textContent = '';
+  messages.forEach(msgData => {
     const messageDiv = document.createElement('div');
     messageDiv.className = msgData.class;
 
@@ -245,11 +584,9 @@ function loadChat(chat) {
     if (msgData.class.includes('user')) {
       contentDiv.textContent = msgData.content;
     } else if (msgData.class.includes('assistant')) {
-      // Restore complete HTML structure including tool calls
       if (msgData.html) {
         contentDiv.innerHTML = msgData.html;
       } else {
-        // Fallback for old messages without HTML
         renderMarkdown(contentDiv);
       }
     }
@@ -259,25 +596,18 @@ function loadChat(chat) {
     if (msgData.class.includes('assistant')) {
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'message-actions';
-      actionsDiv.innerHTML = `
-        <button class="action-btn" title="Copy" onclick="copyMessage(this)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-        </button>
-      `;
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'action-btn';
+      copyBtn.title = 'Copy';
+      copyBtn.setAttribute('onclick', 'copyMessage(this)');
+      copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+      actionsDiv.appendChild(copyBtn);
       messageDiv.appendChild(actionsDiv);
     }
 
     chatMessages.appendChild(messageDiv);
   });
-
-  renderTodos();
-
   scrollToBottom();
-  renderChatHistory();
-  localStorage.setItem('currentChatId', currentChatId);
 }
 
 // Render chat history sidebar
@@ -343,17 +673,24 @@ window.deleteChat = function(chatId, event) {
   event.stopPropagation();
 
   allChats = allChats.filter(c => c.id !== chatId);
-  localStorage.setItem('allChats', JSON.stringify(allChats));
+
+  // Delete from API if authenticated, else localStorage
+  if (useApi()) {
+    fetch(apiBase() + '/api/chats/' + chatId, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }
+    }).catch(err => console.error('[Delete] API error:', err));
+  } else {
+    localStorage.setItem('allChats', JSON.stringify(allChats));
+  }
 
   if (currentChatId === chatId) {
-    // If deleting current chat, go to home or load another chat
     if (allChats.length > 0) {
       loadChat(allChats[0]);
     } else {
       currentChatId = null;
       localStorage.removeItem('currentChatId');
-      homeView.classList.remove('hidden');
-      chatView.classList.add('hidden');
+      showView('home');
       isFirstMessage = true;
     }
   }
@@ -364,6 +701,158 @@ window.deleteChat = function(chatId, event) {
 // Update greeting based on time of day
 function updateGreeting() {
   // Greeting is now static, no need to update
+}
+
+// --- Settings ---
+
+async function loadSettings() {
+  if (!window.electronAPI || typeof window.electronAPI.getSettings !== 'function') return;
+  try {
+    const data = await window.electronAPI.getSettings();
+    cachedSettings = data;
+    if (settingsAnthropicKey) settingsAnthropicKey.value = '';
+    if (settingsComposioKey) settingsComposioKey.value = '';
+    if (settingsAnthropicMasked) settingsAnthropicMasked.textContent = data.apiKeys?.anthropic ? 'Set (' + data.apiKeys.anthropic + ')' : 'Not set';
+    if (settingsComposioMasked) settingsComposioMasked.textContent = data.apiKeys?.composio ? 'Set (' + data.apiKeys.composio + ')' : 'Not set';
+    if (settingsKeysStatus) settingsKeysStatus.textContent = '';
+    renderSettingsMcpList(data.mcpServers || []);
+    hideSettingsMcpForm();
+  } catch (err) {
+    if (settingsKeysStatus) {
+      settingsKeysStatus.textContent = err.message && err.message.includes('404')
+        ? 'Settings API not found (404). Restart the backend server (npm run start:server) and try again.'
+        : 'Failed to load: ' + err.message;
+      settingsKeysStatus.classList.add('error');
+    }
+  }
+}
+
+function showSettingsKeysStatus(msg, isError) {
+  if (!settingsKeysStatus) return;
+  settingsKeysStatus.textContent = msg;
+  settingsKeysStatus.classList.toggle('error', isError);
+}
+
+async function saveSettingsKeys() {
+  if (!window.electronAPI || typeof window.electronAPI.updateSettings !== 'function') return;
+  const anthropic = settingsAnthropicKey ? settingsAnthropicKey.value.trim() : '';
+  const composio = settingsComposioKey ? settingsComposioKey.value.trim() : '';
+  const body = { apiKeys: { anthropic: anthropic || '', composio: composio || '' } };
+  try {
+    const data = await window.electronAPI.updateSettings(body);
+    cachedSettings.apiKeys = data.apiKeys;
+    if (settingsAnthropicKey) settingsAnthropicKey.value = '';
+    if (settingsComposioKey) settingsComposioKey.value = '';
+    if (settingsAnthropicMasked) settingsAnthropicMasked.textContent = data.apiKeys?.anthropic ? 'Set (' + data.apiKeys.anthropic + ')' : 'Not set';
+    if (settingsComposioMasked) settingsComposioMasked.textContent = data.apiKeys?.composio ? 'Set (' + data.apiKeys.composio + ')' : 'Not set';
+    showSettingsKeysStatus('Saved.');
+  } catch (err) {
+    showSettingsKeysStatus(err.message || 'Save failed', true);
+  }
+}
+
+function toggleSettingsKeyVisibility(inputEl, btnEl) {
+  if (!inputEl || !btnEl) return;
+  const isPassword = inputEl.type === 'password';
+  inputEl.type = isPassword ? 'text' : 'password';
+  btnEl.textContent = isPassword ? 'Hide' : 'Show';
+}
+
+function renderSettingsMcpList(list) {
+  if (!settingsMcpList) return;
+  settingsMcpList.innerHTML = '';
+  (list || []).forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'settings-mcp-item';
+    const typeLabel = entry.type === 'local' ? 'Local' : 'HTTP';
+    const detail = entry.type === 'http' ? (entry.url || '') : (entry.command || '') + ' ' + (entry.args || []).join(' ');
+    row.innerHTML = `
+      <span class="settings-mcp-item-name">${escapeHtml(entry.name || 'Unnamed')}</span>
+      <span class="settings-mcp-item-type">${typeLabel}</span>
+      <span class="settings-mcp-item-detail">${escapeHtml(String(detail).slice(0, 40))}${String(detail).length > 40 ? '…' : ''}</span>
+      <button type="button" class="settings-mcp-item-edit" data-id="${escapeHtml(entry.id)}" title="Edit">Edit</button>
+      <button type="button" class="settings-mcp-item-remove" data-id="${escapeHtml(entry.id)}" title="Remove">Remove</button>
+    `;
+    row.querySelector('.settings-mcp-item-edit').addEventListener('click', () => openSettingsMcpForm(entry));
+    row.querySelector('.settings-mcp-item-remove').addEventListener('click', () => removeSettingsMcp(entry.id));
+    settingsMcpList.appendChild(row);
+  });
+}
+
+function openSettingsMcpForm(entry) {
+  settingsMcpEditingId = entry ? entry.id : null;
+  if (settingsMcpFormTitle) settingsMcpFormTitle.textContent = entry ? 'Edit MCP server' : 'Add MCP server';
+  if (settingsMcpName) settingsMcpName.value = entry ? (entry.name || '') : '';
+  if (settingsMcpType) settingsMcpType.value = entry ? (entry.type || 'http') : 'http';
+  if (settingsMcpUrl) settingsMcpUrl.value = entry && entry.type === 'http' ? (entry.url || '') : '';
+  if (settingsMcpHeaders) settingsMcpHeaders.value = entry && entry.type === 'http' && entry.headers ? JSON.stringify(entry.headers, null, 2) : '{}';
+  if (settingsMcpCommand) settingsMcpCommand.value = entry && entry.type === 'local' ? (entry.command || '') : '';
+  if (settingsMcpArgs) settingsMcpArgs.value = entry && entry.type === 'local' && Array.isArray(entry.args) ? entry.args.join(', ') : '';
+  settingsMcpForm.classList.remove('hidden');
+  toggleSettingsMcpTypeFields(settingsMcpType ? settingsMcpType.value : 'http');
+}
+
+function hideSettingsMcpForm() {
+  settingsMcpForm.classList.add('hidden');
+  settingsMcpEditingId = null;
+  if (settingsMcpStatus) settingsMcpStatus.textContent = '';
+}
+
+function toggleSettingsMcpTypeFields(type) {
+  if (settingsMcpHttpFields) settingsMcpHttpFields.classList.toggle('hidden', type !== 'http');
+  if (settingsMcpLocalFields) settingsMcpLocalFields.classList.toggle('hidden', type !== 'local');
+}
+
+async function saveSettingsMcp() {
+  const name = settingsMcpName ? settingsMcpName.value.trim() : '';
+  const type = settingsMcpType ? settingsMcpType.value : 'http';
+  if (!name) {
+    if (settingsMcpStatus) settingsMcpStatus.textContent = 'Name is required.';
+    return;
+  }
+  let list = (cachedSettings.mcpServers || []).slice();
+  const payload = { id: settingsMcpEditingId || 'mcp_' + Date.now(), name, type };
+  if (type === 'http') {
+    payload.url = settingsMcpUrl ? settingsMcpUrl.value.trim() : '';
+    try {
+      payload.headers = settingsMcpHeaders && settingsMcpHeaders.value.trim() ? JSON.parse(settingsMcpHeaders.value.trim()) : {};
+    } catch (_) {
+      if (settingsMcpStatus) settingsMcpStatus.textContent = 'Headers must be valid JSON.';
+      return;
+    }
+  } else {
+    payload.command = settingsMcpCommand ? settingsMcpCommand.value.trim() : '';
+    payload.args = settingsMcpArgs ? settingsMcpArgs.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+    payload.environment = {};
+  }
+  if (settingsMcpEditingId) {
+    list = list.map((e) => (e.id === settingsMcpEditingId ? payload : e));
+  } else {
+    list.push(payload);
+  }
+  if (!window.electronAPI || typeof window.electronAPI.updateSettings !== 'function') return;
+  try {
+    const data = await window.electronAPI.updateSettings({ mcpServers: list });
+    cachedSettings.mcpServers = data.mcpServers || [];
+    renderSettingsMcpList(cachedSettings.mcpServers);
+    hideSettingsMcpForm();
+    if (settingsMcpStatus) settingsMcpStatus.textContent = 'Saved.';
+  } catch (err) {
+    if (settingsMcpStatus) settingsMcpStatus.textContent = err.message || 'Save failed';
+  }
+}
+
+async function removeSettingsMcp(id) {
+  const list = (cachedSettings.mcpServers || []).filter((e) => e.id !== id);
+  if (!window.electronAPI || typeof window.electronAPI.updateSettings !== 'function') return;
+  try {
+    const data = await window.electronAPI.updateSettings({ mcpServers: list });
+    cachedSettings.mcpServers = data.mcpServers || [];
+    renderSettingsMcpList(cachedSettings.mcpServers);
+    hideSettingsMcpForm();
+  } catch (err) {
+    if (settingsMcpStatus) settingsMcpStatus.textContent = err.message || 'Remove failed';
+  }
 }
 
 // Setup all event listeners
@@ -391,6 +880,17 @@ function setupEventListeners() {
   // Left sidebar toggle (chat history)
   leftSidebarToggle.addEventListener('click', toggleLeftSidebar);
   leftSidebarExpand.addEventListener('click', toggleLeftSidebar);
+
+  // Settings
+  if (settingsSidebarBtn) settingsSidebarBtn.addEventListener('click', openSettings);
+  if (settingsBackBtn) settingsBackBtn.addEventListener('click', closeSettings);
+  if (settingsSaveKeysBtn) settingsSaveKeysBtn.addEventListener('click', saveSettingsKeys);
+  if (settingsAnthropicToggle) settingsAnthropicToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsAnthropicKey, settingsAnthropicToggle));
+  if (settingsComposioToggle) settingsComposioToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsComposioKey, settingsComposioToggle));
+  if (settingsAddMcpBtn) settingsAddMcpBtn.addEventListener('click', () => openSettingsMcpForm(null));
+  if (settingsMcpType) settingsMcpType.addEventListener('change', () => toggleSettingsMcpTypeFields(settingsMcpType.value));
+  if (settingsMcpCancelBtn) settingsMcpCancelBtn.addEventListener('click', hideSettingsMcpForm);
+  if (settingsMcpSaveBtn) settingsMcpSaveBtn.addEventListener('click', saveSettingsMcp);
 
   // File attachment buttons
   const homeAttachBtn = document.getElementById('homeAttachBtn');
@@ -597,27 +1097,58 @@ function handleFileSelect(event, context) {
       return;
     }
 
-    // Read file as base64 for images or text
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      attachedFiles.push({
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        data: e.target.result
-      });
-      renderAttachedFiles(context);
-    };
+    // Upload to Supabase Storage if authenticated, else read locally
+    if (useApi()) {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (currentChatId) formData.append('chatId', currentChatId);
 
-    if (file.type.startsWith('image/')) {
-      reader.readAsDataURL(file);
+      fetch(apiBase() + '/api/upload', {
+        method: 'POST',
+        headers: getAuthHeaders(), // No Content-Type — browser sets multipart boundary
+        body: formData
+      })
+        .then(r => r.json())
+        .then(attachment => {
+          attachedFiles.push({
+            id: attachment.id,
+            name: attachment.file_name,
+            type: attachment.file_type,
+            size: attachment.file_size,
+            storagePath: attachment.storage_path
+          });
+          renderAttachedFiles(context);
+        })
+        .catch(err => {
+          console.error('[Upload] Error:', err);
+          // Fall back to local read
+          readFileLocally(file, context);
+        });
     } else {
-      reader.readAsText(file);
+      readFileLocally(file, context);
     }
   });
 
-  // Reset input
   event.target.value = '';
+}
+
+function readFileLocally(file, context) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    attachedFiles.push({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      data: e.target.result
+    });
+    renderAttachedFiles(context);
+  };
+
+  if (file.type.startsWith('image/')) {
+    reader.readAsDataURL(file);
+  } else {
+    reader.readAsText(file);
+  }
 }
 
 // Render attached files preview
@@ -772,9 +1303,33 @@ function resetTextareaHeight(textarea) {
 
 // Switch to chat view
 function switchToChatView() {
-  homeView.classList.add('hidden');
-  chatView.classList.remove('hidden');
+  showView('chat');
   messageInput.focus();
+}
+
+/**
+ * Show a main content view: 'home' | 'chat' | 'settings'.
+ * Hides the other two. When opening settings, stores current view for Back.
+ */
+function showView(viewName) {
+  homeView.classList.toggle('hidden', viewName !== 'home');
+  chatView.classList.toggle('hidden', viewName !== 'chat');
+  if (settingsView) settingsView.classList.toggle('hidden', viewName !== 'settings');
+  if (viewName === 'settings') {
+    lastViewBeforeSettings = currentMainView;
+    loadSettings();
+  }
+  currentMainView = viewName;
+}
+
+/** Open settings page (called from sidebar button). */
+function openSettings() {
+  showView('settings');
+}
+
+/** Close settings and return to previous view. */
+function closeSettings() {
+  showView(lastViewBeforeSettings);
 }
 
 // Handle form submission
@@ -1163,8 +1718,7 @@ window.startNewChat = function() {
   emptyTools.style.display = 'block';
 
   // Switch back to home view
-  homeView.classList.remove('hidden');
-  chatView.classList.add('hidden');
+  showView('home');
   homeInput.focus();
 
   // Clear currentChatId from localStorage
@@ -1764,6 +2318,105 @@ function handleBrowserTransitionOnMessage() {
   if (activeBrowserSession && browserDisplayMode === 'inline') {
     // Move browser to sidebar when user sends a new message
     moveBrowserToSidebar();
+  }
+}
+
+// ==================== SEMANTIC SEARCH ====================
+
+let searchDebounceTimer = null;
+
+function setupSearchListeners() {
+  if (!searchInput) return;
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounceTimer);
+    const query = searchInput.value.trim();
+
+    if (!query) {
+      hideSearchResults();
+      return;
+    }
+
+    searchDebounceTimer = setTimeout(() => performSearch(query), 400);
+  });
+
+  // Close search results on Escape
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      hideSearchResults();
+      searchInput.blur();
+    }
+  });
+}
+
+async function performSearch(query) {
+  if (!useApi()) return;
+
+  try {
+    const res = await fetch(apiBase() + '/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ query, matchCount: 10 })
+    });
+
+    if (!res.ok) {
+      hideSearchResults();
+      return;
+    }
+
+    const data = await res.json();
+    renderSearchResults(data.results || []);
+  } catch {
+    hideSearchResults();
+  }
+}
+
+function renderSearchResults(results) {
+  if (!searchResults) return;
+
+  if (!results.length) {
+    searchResults.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--text-tertiary);">No results found</div>';
+    searchResults.classList.remove('hidden');
+    return;
+  }
+
+  searchResults.innerHTML = results.map(r => {
+    const score = Math.round((r.similarity || 0) * 100);
+    const preview = (r.content_preview || '').substring(0, 80);
+    const sourceLabel = r.source_type === 'attachment' ? 'file' : 'message';
+    return `<div class="search-result-item" data-source-type="${r.source_type}" data-source-id="${r.source_id}">
+      <span class="search-result-score">${score}%</span>
+      <div>${sourceLabel}: ${preview}</div>
+    </div>`;
+  }).join('');
+
+  // Click handler — navigate to source chat
+  searchResults.querySelectorAll('.search-result-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const sourceId = item.dataset.sourceId;
+      const sourceType = item.dataset.sourceType;
+
+      if (sourceType === 'message') {
+        // Find which chat contains this message
+        const chat = allChats.find(c => c.messages && c.messages.some(m => m.id === sourceId));
+        if (chat) {
+          loadChat(chat.id);
+        }
+      }
+
+      searchInput.value = '';
+      hideSearchResults();
+    });
+  });
+
+  searchResults.classList.remove('hidden');
+}
+
+function hideSearchResults() {
+  if (searchResults) {
+    searchResults.classList.add('hidden');
+    searchResults.innerHTML = '';
   }
 }
 

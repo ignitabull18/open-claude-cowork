@@ -122,7 +122,7 @@ export class OpencodeProvider extends BaseProvider {
     await this.initialize();
 
     // Check for existing session
-    let sessionId = chatId ? this.getSession(chatId) : null;
+    let sessionId = chatId ? await this.getSession(chatId) : null;
     console.log('[Opencode] Session for', chatId, ':', sessionId || 'new');
 
     // Create abort controller for this request

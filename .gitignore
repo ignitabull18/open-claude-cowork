@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 # Server runtime-generated config
 server/opencode.json
+
+# User settings (API keys, MCP servers) - do not commit
+server/user-settings.json
