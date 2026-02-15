@@ -43,6 +43,12 @@ const settingsSmitheryToggle = document.getElementById('settingsSmitheryToggle')
 const settingsAnthropicMasked = document.getElementById('settingsAnthropicMasked');
 const settingsComposioMasked = document.getElementById('settingsComposioMasked');
 const settingsSmitheryMasked = document.getElementById('settingsSmitheryMasked');
+const settingsDataforseoUsername = document.getElementById('settingsDataforseoUsername');
+const settingsDataforseoPassword = document.getElementById('settingsDataforseoPassword');
+const settingsDataforseoUsernameToggle = document.getElementById('settingsDataforseoUsernameToggle');
+const settingsDataforseoPasswordToggle = document.getElementById('settingsDataforseoPasswordToggle');
+const settingsDataforseoUsernameMasked = document.getElementById('settingsDataforseoUsernameMasked');
+const settingsDataforseoPasswordMasked = document.getElementById('settingsDataforseoPasswordMasked');
 const settingsSaveKeysBtn = document.getElementById('settingsSaveKeysBtn');
 const settingsKeysStatus = document.getElementById('settingsKeysStatus');
 const settingsMcpList = document.getElementById('settingsMcpList');
@@ -744,9 +750,13 @@ async function loadSettings() {
     if (settingsAnthropicKey) settingsAnthropicKey.value = '';
     if (settingsComposioKey) settingsComposioKey.value = '';
     if (settingsSmitheryKey) settingsSmitheryKey.value = '';
+    if (settingsDataforseoUsername) settingsDataforseoUsername.value = '';
+    if (settingsDataforseoPassword) settingsDataforseoPassword.value = '';
     if (settingsAnthropicMasked) settingsAnthropicMasked.textContent = data.apiKeys?.anthropic ? 'Set (' + data.apiKeys.anthropic + ')' : 'Not set';
     if (settingsComposioMasked) settingsComposioMasked.textContent = data.apiKeys?.composio ? 'Set (' + data.apiKeys.composio + ')' : 'Not set';
     if (settingsSmitheryMasked) settingsSmitheryMasked.textContent = data.apiKeys?.smithery ? 'Set (' + data.apiKeys.smithery + ')' : 'Not set';
+    if (settingsDataforseoUsernameMasked) settingsDataforseoUsernameMasked.textContent = data.apiKeys?.dataforseoUsername ? 'Set (' + data.apiKeys.dataforseoUsername + ')' : 'Not set';
+    if (settingsDataforseoPasswordMasked) settingsDataforseoPasswordMasked.textContent = data.apiKeys?.dataforseoPassword ? 'Set (' + data.apiKeys.dataforseoPassword + ')' : 'Not set';
     if (settingsKeysStatus) settingsKeysStatus.textContent = '';
     renderSettingsMcpList(data.mcpServers || []);
     hideSettingsMcpForm();
@@ -772,16 +782,22 @@ async function saveSettingsKeys() {
   const anthropic = settingsAnthropicKey ? settingsAnthropicKey.value.trim() : '';
   const composio = settingsComposioKey ? settingsComposioKey.value.trim() : '';
   const smithery = settingsSmitheryKey ? settingsSmitheryKey.value.trim() : '';
-  const body = { apiKeys: { anthropic: anthropic || '', composio: composio || '', smithery: smithery || '' } };
+  const dataforseoUsername = settingsDataforseoUsername ? settingsDataforseoUsername.value.trim() : '';
+  const dataforseoPassword = settingsDataforseoPassword ? settingsDataforseoPassword.value.trim() : '';
+  const body = { apiKeys: { anthropic: anthropic || '', composio: composio || '', smithery: smithery || '', dataforseoUsername: dataforseoUsername || '', dataforseoPassword: dataforseoPassword || '' } };
   try {
     const data = await window.electronAPI.updateSettings(body);
     cachedSettings.apiKeys = data.apiKeys;
     if (settingsAnthropicKey) settingsAnthropicKey.value = '';
     if (settingsComposioKey) settingsComposioKey.value = '';
     if (settingsSmitheryKey) settingsSmitheryKey.value = '';
+    if (settingsDataforseoUsername) settingsDataforseoUsername.value = '';
+    if (settingsDataforseoPassword) settingsDataforseoPassword.value = '';
     if (settingsAnthropicMasked) settingsAnthropicMasked.textContent = data.apiKeys?.anthropic ? 'Set (' + data.apiKeys.anthropic + ')' : 'Not set';
     if (settingsComposioMasked) settingsComposioMasked.textContent = data.apiKeys?.composio ? 'Set (' + data.apiKeys.composio + ')' : 'Not set';
     if (settingsSmitheryMasked) settingsSmitheryMasked.textContent = data.apiKeys?.smithery ? 'Set (' + data.apiKeys.smithery + ')' : 'Not set';
+    if (settingsDataforseoUsernameMasked) settingsDataforseoUsernameMasked.textContent = data.apiKeys?.dataforseoUsername ? 'Set (' + data.apiKeys.dataforseoUsername + ')' : 'Not set';
+    if (settingsDataforseoPasswordMasked) settingsDataforseoPasswordMasked.textContent = data.apiKeys?.dataforseoPassword ? 'Set (' + data.apiKeys.dataforseoPassword + ')' : 'Not set';
     showSettingsKeysStatus('Saved.');
   } catch (err) {
     showSettingsKeysStatus(err.message || 'Save failed', true);
@@ -975,10 +991,22 @@ function setupEventListeners() {
   // Settings
   if (settingsSidebarBtn) settingsSidebarBtn.addEventListener('click', openSettings);
   if (settingsBackBtn) settingsBackBtn.addEventListener('click', closeSettings);
+
+  // Reports and Jobs sidebar buttons
+  const reportsSidebarBtn = document.getElementById('reportsSidebarBtn');
+  const jobsSidebarBtn = document.getElementById('jobsSidebarBtn');
+  const reportsBackBtn = document.getElementById('reportsBackBtn');
+  const jobsBackBtn = document.getElementById('jobsBackBtn');
+  if (reportsSidebarBtn) reportsSidebarBtn.addEventListener('click', () => showView('reports'));
+  if (jobsSidebarBtn) jobsSidebarBtn.addEventListener('click', () => showView('jobs'));
+  if (reportsBackBtn) reportsBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
+  if (jobsBackBtn) jobsBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
   if (settingsSaveKeysBtn) settingsSaveKeysBtn.addEventListener('click', saveSettingsKeys);
   if (settingsAnthropicToggle) settingsAnthropicToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsAnthropicKey, settingsAnthropicToggle));
   if (settingsComposioToggle) settingsComposioToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsComposioKey, settingsComposioToggle));
   if (settingsSmitheryToggle) settingsSmitheryToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsSmitheryKey, settingsSmitheryToggle));
+  if (settingsDataforseoUsernameToggle) settingsDataforseoUsernameToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsDataforseoUsername, settingsDataforseoUsernameToggle));
+  if (settingsDataforseoPasswordToggle) settingsDataforseoPasswordToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsDataforseoPassword, settingsDataforseoPasswordToggle));
   if (settingsAddMcpBtn) settingsAddMcpBtn.addEventListener('click', () => openSettingsMcpForm(null));
   if (settingsMcpType) settingsMcpType.addEventListener('change', () => toggleSettingsMcpTypeFields(settingsMcpType.value));
   if (settingsMcpCancelBtn) settingsMcpCancelBtn.addEventListener('click', hideSettingsMcpForm);
@@ -1415,6 +1443,10 @@ function showView(viewName) {
   if (settingsView) settingsView.classList.toggle('hidden', viewName !== 'settings');
   const dbView = document.getElementById('dbView');
   if (dbView) dbView.classList.toggle('hidden', viewName !== 'database');
+  const reportsView = document.getElementById('reportsView');
+  if (reportsView) reportsView.classList.toggle('hidden', viewName !== 'reports');
+  const jobsViewEl = document.getElementById('jobsView');
+  if (jobsViewEl) jobsViewEl.classList.toggle('hidden', viewName !== 'jobs');
   if (viewName === 'settings') {
     lastViewBeforeSettings = currentMainView;
     loadSettings();
@@ -1422,6 +1454,14 @@ function showView(viewName) {
   if (viewName === 'database') {
     lastViewBeforeSettings = currentMainView;
     if (typeof window.dbExplorer !== 'undefined') window.dbExplorer.load();
+  }
+  if (viewName === 'reports') {
+    lastViewBeforeSettings = currentMainView;
+    initReportsView();
+  }
+  if (viewName === 'jobs') {
+    lastViewBeforeSettings = currentMainView;
+    initJobsView();
   }
   currentMainView = viewName;
 }
@@ -1952,6 +1992,22 @@ function updateInlineToolResult(toolId, result) {
     const outputSection = toolDiv.querySelector('.tool-output-section');
     const outputContent = toolDiv.querySelector('.tool-output-content');
     if (outputSection && outputContent) {
+      // Check for screenshot image data (browser_screenshot returns base64 image)
+      const toolName = toolDiv.querySelector('.tool-name')?.textContent || '';
+      if (toolName === 'browser_screenshot' && result && typeof result === 'object') {
+        const imgData = extractScreenshotData(result);
+        if (imgData) {
+          outputContent.textContent = '';
+          const img = document.createElement('img');
+          img.className = 'browser-screenshot-img';
+          img.src = 'data:image/png;base64,' + imgData;
+          img.alt = 'Browser screenshot';
+          outputContent.appendChild(img);
+          outputSection.style.display = 'block';
+          return;
+        }
+      }
+
       const resultStr = typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result);
       outputContent.textContent = resultStr.substring(0, 2000) + (resultStr.length > 2000 ? '...' : '');
       outputSection.style.display = 'block';
@@ -1967,6 +2023,23 @@ function updateInlineToolResult(toolId, result) {
       }
     }
   }
+}
+
+// Extract base64 image data from screenshot tool result
+function extractScreenshotData(result) {
+  if (result.data && typeof result.data === 'string') return result.data;
+  if (Array.isArray(result.content)) {
+    for (const block of result.content) {
+      if (block.type === 'image' && block.data) return block.data;
+    }
+  }
+  if (typeof result === 'string') {
+    try {
+      const parsed = JSON.parse(result);
+      return extractScreenshotData(parsed);
+    } catch (_) {}
+  }
+  return null;
 }
 
 // Toggle inline tool call expansion

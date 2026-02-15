@@ -1022,7 +1022,9 @@ app.get('/api/settings', (_req, res) => {
       apiKeys: {
         anthropic: maskKey(data.apiKeys.anthropic),
         composio: maskKey(data.apiKeys.composio),
-        smithery: maskKey(data.apiKeys.smithery)
+        smithery: maskKey(data.apiKeys.smithery),
+        dataforseoUsername: maskKey(data.apiKeys.dataforseoUsername),
+        dataforseoPassword: maskKey(data.apiKeys.dataforseoPassword)
       },
       mcpServers: data.mcpServers,
       browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 }
@@ -1040,11 +1042,15 @@ app.put('/api/settings', (req, res) => {
     const body = req.body || {};
     const prevComposioKey = data.apiKeys.composio;
     const prevSmitheryKey = data.apiKeys.smithery;
+    const prevDfsUser = data.apiKeys.dataforseoUsername;
+    const prevDfsPass = data.apiKeys.dataforseoPassword;
 
     if (body.apiKeys && typeof body.apiKeys === 'object') {
       if (body.apiKeys.anthropic !== undefined) data.apiKeys.anthropic = body.apiKeys.anthropic ? String(body.apiKeys.anthropic).trim() : '';
       if (body.apiKeys.composio !== undefined) data.apiKeys.composio = body.apiKeys.composio ? String(body.apiKeys.composio).trim() : '';
       if (body.apiKeys.smithery !== undefined) data.apiKeys.smithery = body.apiKeys.smithery ? String(body.apiKeys.smithery).trim() : '';
+      if (body.apiKeys.dataforseoUsername !== undefined) data.apiKeys.dataforseoUsername = body.apiKeys.dataforseoUsername ? String(body.apiKeys.dataforseoUsername).trim() : '';
+      if (body.apiKeys.dataforseoPassword !== undefined) data.apiKeys.dataforseoPassword = body.apiKeys.dataforseoPassword ? String(body.apiKeys.dataforseoPassword).trim() : '';
     }
     if (body.mcpServers !== undefined) {
       if (!Array.isArray(body.mcpServers)) {
@@ -1090,6 +1096,8 @@ app.put('/api/settings', (req, res) => {
     if (data.apiKeys.anthropic) process.env.ANTHROPIC_API_KEY = data.apiKeys.anthropic;
     if (data.apiKeys.composio) process.env.COMPOSIO_API_KEY = data.apiKeys.composio;
     if (data.apiKeys.smithery) process.env.SMITHERY_API_KEY = data.apiKeys.smithery;
+    if (data.apiKeys.dataforseoUsername) process.env.DATAFORSEO_USERNAME = data.apiKeys.dataforseoUsername;
+    if (data.apiKeys.dataforseoPassword) process.env.DATAFORSEO_PASSWORD = data.apiKeys.dataforseoPassword;
     if (prevComposioKey !== data.apiKeys.composio) {
       composioSessions.clear();
       defaultComposioSession = null;
@@ -1099,12 +1107,18 @@ app.put('/api/settings', (req, res) => {
       defaultSmitheryMcpConfig = null;
       console.log('[SETTINGS] Smithery key changed; cleared connection cache');
     }
+    if (prevDfsUser !== data.apiKeys.dataforseoUsername || prevDfsPass !== data.apiKeys.dataforseoPassword) {
+      dataforseoMcpConfig = null;
+      console.log('[SETTINGS] DataForSEO credentials changed; cleared MCP config cache');
+    }
 
     res.json({
       apiKeys: {
         anthropic: maskKey(data.apiKeys.anthropic),
         composio: maskKey(data.apiKeys.composio),
-        smithery: maskKey(data.apiKeys.smithery)
+        smithery: maskKey(data.apiKeys.smithery),
+        dataforseoUsername: maskKey(data.apiKeys.dataforseoUsername),
+        dataforseoPassword: maskKey(data.apiKeys.dataforseoPassword)
       },
       mcpServers: data.mcpServers,
       browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 }
@@ -1202,6 +1216,7 @@ if (fs.existsSync(rendererPath)) {
 await initializeProviders();
 await initializeComposioSession();
 await initializeSmitheryConnection();
+initializeDataforseoConfig();
 await initializeBrowser();
 
 // Start Supabase cron jobs + job scheduler if configured
