@@ -45,17 +45,28 @@ export class BaseProvider {
    * Get or create a session for a chat.
    * Checks in-memory Map first, falls back to Supabase DB lookup.
    * @param {string} chatId
+   * @param {string} [userId]
    * @returns {Promise<string|null>} Session ID if exists
    */
-  async getSession(chatId) {
-    const cached = this.sessions.get(chatId);
+  _buildSessionKey(chatId, userId) {
+    if (userId === undefined || userId === null) return chatId;
+    if (userId === 'anonymous') return chatId;
+    return `${userId}:${chatId}`;
+  }
+
+  async getSession(chatId, userId) {
+    if (!chatId) return null;
+    const key = this._buildSessionKey(chatId, userId);
+    const cached = this.sessions.get(key);
     if (cached) return cached;
 
     // Fall back to DB
     try {
-      const dbSession = await getProviderSession(chatId, this.name);
+      const dbSession = await (userId === undefined || userId === null || userId === 'anonymous'
+        ? getProviderSession(chatId, this.name)
+        : getProviderSession(chatId, this.name, userId));
       if (dbSession) {
-        this.sessions.set(chatId, dbSession);
+        this.sessions.set(key, dbSession);
         return dbSession;
       }
     } catch {
@@ -68,9 +79,12 @@ export class BaseProvider {
    * Store a session ID for a chat
    * @param {string} chatId
    * @param {string} sessionId
+   * @param {string} [userId]
    */
-  setSession(chatId, sessionId) {
-    this.sessions.set(chatId, sessionId);
+  setSession(chatId, sessionId, userId) {
+    if (!chatId) return;
+    const key = this._buildSessionKey(chatId, userId);
+    this.sessions.set(key, sessionId);
   }
 
   /**

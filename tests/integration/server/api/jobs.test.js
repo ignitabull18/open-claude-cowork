@@ -69,6 +69,7 @@ describe('Job endpoints', () => {
 
   beforeEach(() => {
     resetMockDB();
+    process.env.ALLOW_ANONYMOUS = 'false';
     token = createTestToken(TEST_USER);
     seedAuthUser(token, TEST_USER);
     mockTriggerJob.mockClear();

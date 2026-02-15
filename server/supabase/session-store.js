@@ -2,13 +2,18 @@ import { getAdminClient } from './client.js';
 
 const db = () => getAdminClient();
 
-export async function getProviderSession(chatId, provider) {
-  const { data, error } = await db()
+export async function getProviderSession(chatId, provider, userId) {
+  let query = db()
     .from('provider_sessions')
     .select('session_id')
     .eq('chat_id', chatId)
-    .eq('provider', provider)
-    .single();
+    .eq('provider', provider);
+
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query.single();
   if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
   return data?.session_id || null;
 }

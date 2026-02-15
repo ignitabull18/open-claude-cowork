@@ -171,17 +171,22 @@ async function executeJob(job) {
     const duration = Date.now() - startTime;
 
     if (execution) {
-      await jobStore.updateJobExecution(execution.id, {
-        status: 'failed',
-        completedAt: new Date().toISOString(),
-        durationMs: duration,
-        error: err.message
-      }).catch(e => console.error('[SCHEDULER] Failed to update execution:', e.message));
+    await jobStore.updateJobExecution(execution.id, {
+      status: 'failed',
+      completedAt: new Date().toISOString(),
+      durationMs: duration,
+      error: err.message
+    }).catch(e => console.error('[SCHEDULER] Failed to update execution:', e.message));
     }
 
     // Update job with error
+    const nextRun = job.job_type === 'one_time'
+      ? new Date()
+      : calculateNextRun(job);
+
     await jobStore.updateJob(job.id, job.user_id, {
       lastRunAt: new Date().toISOString(),
+      nextRunAt: nextRun ? nextRun.toISOString() : null,
       lastError: err.message,
       runCount: (job.run_count || 0) + 1
     }).catch(e => console.error('[SCHEDULER] Failed to update job:', e.message));
@@ -193,8 +198,19 @@ async function pollAndExecute() {
   try {
     const dueJobs = await jobStore.getDueJobs();
     for (const job of dueJobs) {
+      const claimLeaseMs = Math.max(POLL_INTERVAL_MS, 60000);
+      let claimed = job;
+
+      if (job.next_run_at) {
+        const claimedJob = await jobStore.claimDueJob(job.id, job.user_id, job.next_run_at, claimLeaseMs);
+        if (!claimedJob) {
+          continue;
+        }
+        claimed = claimedJob;
+      }
+
       // Execute in background (don't await — allow parallel execution)
-      executeJob(job).catch(err => {
+      executeJob(claimed).catch(err => {
         console.error(`[SCHEDULER] Unhandled error for job ${job.id}:`, err.message);
       });
     }

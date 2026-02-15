@@ -164,6 +164,33 @@ export async function getDueJobs() {
   return data || [];
 }
 
+/**
+ * Atomically claim a due job before execution.
+ * Uses next_run_at as a lightweight optimistic lock token so one scheduler
+ * instance can claim ownership and avoid duplicate execution.
+ *
+ * @param {string} jobId
+ * @param {string} userId
+ * @param {string} nextRunAt
+ * @param {number} leaseMs
+ * @returns {Promise<Object|null>} Claimed job row, or null if already taken.
+ */
+export async function claimDueJob(jobId, userId, nextRunAt, leaseMs = 120000) {
+  const leasedUntil = new Date(Date.now() + leaseMs).toISOString();
+  const { data, error } = await db()
+    .from('scheduled_jobs')
+    .update({ next_run_at: leasedUntil })
+    .eq('id', jobId)
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .eq('next_run_at', nextRunAt)
+    .select()
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data || null;
+}
+
 /** Get all active jobs for scheduling on startup. */
 export async function getActiveJobs() {
   const { data, error } = await db()

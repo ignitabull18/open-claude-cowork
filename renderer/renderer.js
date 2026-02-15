@@ -721,7 +721,7 @@ function renderChatMessages(messages) {
       const copyBtn = document.createElement('button');
       copyBtn.className = 'action-btn';
       copyBtn.title = 'Copy';
-      copyBtn.setAttribute('onclick', 'copyMessage(this)');
+      copyBtn.addEventListener('click', () => copyMessage(copyBtn));
       copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
       actionsDiv.appendChild(copyBtn);
       messageDiv.appendChild(actionsDiv);
@@ -789,13 +789,16 @@ function renderChatHistory() {
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
       </svg>
       <span class="chat-title">${escapeHtml(chat.title || 'New chat')}</span>
-      <button class="delete-chat-btn" onclick="deleteChat('${chat.id}', event)" title="Delete">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-      </button>
+      <button class="delete-chat-btn" type="button" title="Delete"></button>
     `;
+    const deleteBtn = item.querySelector('.delete-chat-btn');
+    deleteBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    `;
+    deleteBtn.addEventListener('click', (event) => deleteChat(chat.id, event));
     item.onclick = (e) => {
       if (!e.target.closest('.delete-chat-btn')) {
         switchToChat(chat.id);
@@ -1299,31 +1302,106 @@ function renderPluginsList(plugins) {
     settingsPluginsList.innerHTML = '<p style="color:var(--text-secondary);font-size:0.85rem;">No plugins installed. Install one from a Git URL above.</p>';
     return;
   }
-  settingsPluginsList.innerHTML = plugins.map(p => `
-    <div class="plugin-card" data-plugin-dir="${p.dirName}">
-      <div class="plugin-card-header">
-        <div class="plugin-card-info">
-          <span class="plugin-card-name">${p.name}</span>
-          <span class="plugin-card-version">v${p.version}</span>
-        </div>
-        <div class="plugin-card-actions">
-          <label class="plugin-toggle">
-            <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="togglePlugin('${p.name}', this.checked)" />
-            <span class="plugin-toggle-label">${p.enabled ? 'Enabled' : 'Disabled'}</span>
-          </label>
-          <button type="button" class="plugin-remove-btn" onclick="removePlugin('${p.dirName}', '${p.name}')" title="Remove plugin">✕</button>
-        </div>
-      </div>
-      ${p.description ? `<p class="plugin-card-desc">${p.description}</p>` : ''}
-      <div class="plugin-card-meta">
-        ${p.author ? `<span>by ${p.author}</span>` : ''}
-        ${p.category ? `<span class="plugin-card-category">${p.category}</span>` : ''}
-        ${p.hasMcp ? '<span class="plugin-badge">MCP</span>' : ''}
-        ${p.hasSkills ? '<span class="plugin-badge">Skills</span>' : ''}
-        ${p.agents && p.agents.length > 0 ? '<span class="plugin-badge">Agents</span>' : ''}
-      </div>
-    </div>
-  `).join('');
+  settingsPluginsList.textContent = '';
+  const fragment = document.createDocumentFragment();
+
+  plugins.forEach((p) => {
+    const card = document.createElement('div');
+    card.className = 'plugin-card';
+    card.dataset.pluginDir = p.dirName || '';
+
+    const header = document.createElement('div');
+    header.className = 'plugin-card-header';
+
+    const info = document.createElement('div');
+    info.className = 'plugin-card-info';
+
+    const name = document.createElement('span');
+    name.className = 'plugin-card-name';
+    name.textContent = p.name || '';
+
+    const version = document.createElement('span');
+    version.className = 'plugin-card-version';
+    version.textContent = `v${p.version || '0.0.0'}`;
+
+    info.append(name, version);
+
+    const actions = document.createElement('div');
+    actions.className = 'plugin-card-actions';
+
+    const toggleLabel = document.createElement('label');
+    toggleLabel.className = 'plugin-toggle';
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.checked = !!p.enabled;
+    const toggleStatus = document.createElement('span');
+    toggleStatus.className = 'plugin-toggle-label';
+    toggleStatus.textContent = p.enabled ? 'Enabled' : 'Disabled';
+    toggle.addEventListener('change', () => {
+      togglePlugin(p.name, toggle.checked);
+      toggleStatus.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+    });
+
+    toggleLabel.append(toggle, toggleStatus);
+    actions.appendChild(toggleLabel);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'plugin-remove-btn';
+    removeBtn.textContent = '✕';
+    removeBtn.title = 'Remove plugin';
+    removeBtn.addEventListener('click', () => {
+      removePlugin(p.dirName, p.name);
+    });
+    actions.appendChild(removeBtn);
+
+    header.append(info, actions);
+    card.appendChild(header);
+
+    if (p.description) {
+      const desc = document.createElement('p');
+      desc.className = 'plugin-card-desc';
+      desc.textContent = p.description;
+      card.appendChild(desc);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'plugin-card-meta';
+
+    if (p.author) {
+      const author = document.createElement('span');
+      author.textContent = `by ${p.author}`;
+      meta.appendChild(author);
+    }
+    if (p.category) {
+      const category = document.createElement('span');
+      category.className = 'plugin-card-category';
+      category.textContent = p.category;
+      meta.appendChild(category);
+    }
+    if (p.hasMcp) {
+      const badge = document.createElement('span');
+      badge.className = 'plugin-badge';
+      badge.textContent = 'MCP';
+      meta.appendChild(badge);
+    }
+    if (p.hasSkills) {
+      const badge = document.createElement('span');
+      badge.className = 'plugin-badge';
+      badge.textContent = 'Skills';
+      meta.appendChild(badge);
+    }
+    if (p.agents && p.agents.length > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'plugin-badge';
+      badge.textContent = 'Agents';
+      meta.appendChild(badge);
+    }
+    card.appendChild(meta);
+    fragment.appendChild(card);
+  });
+
+  settingsPluginsList.appendChild(fragment);
 }
 
 async function installPlugin() {
@@ -1744,29 +1822,47 @@ function renderAttachedFiles(context) {
     inputWrapper.insertBefore(filesContainer, inputWrapper.firstChild);
   }
 
-  filesContainer.innerHTML = attachedFiles.map((file, index) => `
-    <div class="attached-file">
+  filesContainer.textContent = '';
+
+  attachedFiles.forEach((file, index) => {
+    const row = document.createElement('div');
+    row.className = 'attached-file';
+
+    const fileIcon = document.createElement('svg');
+    fileIcon.setAttribute('viewBox', '0 0 24 24');
+    fileIcon.setAttribute('fill', 'none');
+    fileIcon.setAttribute('stroke', 'currentColor');
+    fileIcon.setAttribute('stroke-width', '2');
+    fileIcon.innerHTML = `
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+    `;
+
+    const name = document.createElement('span');
+    name.textContent = file.name || '';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'remove-file';
+    removeBtn.setAttribute('aria-label', 'Remove attached file');
+    removeBtn.innerHTML = `
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-        <polyline points="14 2 14 8 20 8"></polyline>
-      </svg>
-      <span>${file.name}</span>
-      <svg class="remove-file" onclick="removeAttachedFile(${index}, '${context}')" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="18" y1="6" x2="6" y2="18"></line>
         <line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
-    </div>
-  `).join('');
+    `;
+    removeBtn.addEventListener('click', () => {
+      attachedFiles.splice(index, 1);
+      renderAttachedFiles(context);
+    });
+
+    row.append(fileIcon, name, removeBtn);
+    filesContainer.appendChild(row);
+  });
 
   if (attachedFiles.length === 0) {
     filesContainer.remove();
   }
-}
-
-// Remove attached file
-window.removeAttachedFile = function(index, context) {
-  attachedFiles.splice(index, 1);
-  renderAttachedFiles(context);
 }
 
 // ==================== VAULT PICKER ====================
@@ -2425,14 +2521,18 @@ function createAssistantMessage() {
 
   const actionsDiv = document.createElement('div');
   actionsDiv.className = 'message-actions hidden';
-  actionsDiv.innerHTML = `
-    <button class="action-btn" title="Copy" onclick="copyMessage(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-      </svg>
-    </button>
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'action-btn';
+  copyBtn.type = 'button';
+  copyBtn.title = 'Copy';
+  copyBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
   `;
+  copyBtn.addEventListener('click', () => copyMessage(copyBtn));
+  actionsDiv.appendChild(copyBtn);
 
   messageDiv.appendChild(contentDiv);
   messageDiv.appendChild(actionsDiv);
@@ -2647,28 +2747,50 @@ function addInlineToolCall(contentDiv, toolName, toolInput, toolId) {
   const inputPreview = formatToolPreview(toolInput);
   const inputStr = JSON.stringify(toolInput, null, 2);
 
-  toolDiv.innerHTML = `
-    <div class="inline-tool-header" onclick="toggleInlineToolCall(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-      </svg>
-      <span class="tool-name">${toolName}</span>
-      <span class="tool-preview">${inputPreview}</span>
-      <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    </div>
-    <div class="inline-tool-result">
-      <div class="tool-section">
-        <div class="tool-section-label">Input</div>
-        <pre>${escapeHtml(inputStr)}</pre>
-      </div>
-      <div class="tool-section tool-output-section" style="display: none;">
-        <div class="tool-section-label">Output</div>
-        <pre class="tool-output-content"></pre>
-      </div>
-    </div>
+  const header = document.createElement('div');
+  header.className = 'inline-tool-header';
+  header.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+    </svg>
+    <span class="tool-name"></span>
+    <span class="tool-preview"></span>
+    <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>
   `;
+  header.querySelector('.tool-name').textContent = toolName || '';
+  header.querySelector('.tool-preview').textContent = inputPreview || '';
+  header.addEventListener('click', () => toggleInlineToolCall(header));
+
+  const body = document.createElement('div');
+  body.className = 'inline-tool-result';
+
+  const inputSection = document.createElement('div');
+  inputSection.className = 'tool-section';
+  const inputLabel = document.createElement('div');
+  inputLabel.className = 'tool-section-label';
+  inputLabel.textContent = 'Input';
+
+  const inputBlock = document.createElement('pre');
+  inputBlock.innerHTML = escapeHtml(inputStr);
+
+  inputSection.append(inputLabel, inputBlock);
+
+  const outputSection = document.createElement('div');
+  outputSection.className = 'tool-section tool-output-section';
+  outputSection.style.display = 'none';
+  const outputLabel = document.createElement('div');
+  outputLabel.className = 'tool-section-label';
+  outputLabel.textContent = 'Output';
+  const outputBlock = document.createElement('pre');
+  outputBlock.className = 'tool-output-content';
+
+  outputSection.append(outputLabel, outputBlock);
+
+  body.append(inputSection, outputSection);
+
+  toolDiv.append(header, body);
 
   // Append tool call at end (in stream order)
   contentDiv.appendChild(toolDiv);
@@ -2729,18 +2851,72 @@ function updateInlineToolResult(toolId, result) {
       }
 
       // Check for document generation tool results
-      if (['create_excel', 'create_powerpoint', 'create_pdf'].includes(toolName) && result && typeof result === 'object') {
-        const docResult = typeof result === 'string' ? JSON.parse(result) : result;
-        if (docResult.filePath) {
-          const filename = docResult.filePath.split('/').pop().split('\\').pop();
-          const sizeStr = docResult.fileSize ? (docResult.fileSize < 1024 ? docResult.fileSize + ' B' : (docResult.fileSize / 1024).toFixed(1) + ' KB') : '';
+      if (['create_excel', 'create_powerpoint', 'create_pdf'].includes(toolName) && result) {
+        let docResult = result;
+        if (typeof docResult === 'string') {
+          try {
+            docResult = JSON.parse(docResult);
+          } catch (_) {
+            docResult = null;
+          }
+        }
+
+        if (docResult && typeof docResult === 'object' && docResult.filePath) {
+          const filename = String(docResult.filePath).split('/').pop().split('\\').pop();
+          const sizeStr = docResult.fileSize ? (docResult.fileSize < 1024 ? `${docResult.fileSize} B` : `${(docResult.fileSize / 1024).toFixed(1)} KB`) : '';
           const iconMap = { create_excel: '\u{1F4CA}', create_powerpoint: '\u{1F4DD}', create_pdf: '\u{1F4C4}' };
           const icon = iconMap[toolName] || '\u{1F4C1}';
-          outputContent.innerHTML = '';
+
+          const downloadUrl = typeof window.electronAPI?.getDocumentUrl === 'function'
+            ? window.electronAPI.getDocumentUrl(filename)
+            : '';
+
           const card = document.createElement('div');
           card.className = 'document-download-card';
           card.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border-color,#333);border-radius:8px;background:var(--input-bg,#1e1e1e);margin:4px 0;';
-          card.innerHTML = `<span style="font-size:1.6rem">${icon}</span><div style="flex:1;min-width:0"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filename}</div>${sizeStr ? `<div style="font-size:0.8rem;opacity:0.6">${sizeStr}</div>` : ''}</div><a href="${window.electronAPI.getDocumentUrl(filename)}" target="_blank" download style="padding:6px 14px;border-radius:6px;background:var(--accent-color,#6366f1);color:#fff;text-decoration:none;font-size:0.85rem;white-space:nowrap">Download</a>`;
+
+          const iconEl = document.createElement('span');
+          iconEl.style.fontSize = '1.6rem';
+          iconEl.textContent = icon;
+
+          const info = document.createElement('div');
+          info.style.flex = '1';
+          info.style.minWidth = '0';
+
+          const fileNameEl = document.createElement('div');
+          fileNameEl.style.fontWeight = '600';
+          fileNameEl.style.overflow = 'hidden';
+          fileNameEl.style.textOverflow = 'ellipsis';
+          fileNameEl.style.whiteSpace = 'nowrap';
+          fileNameEl.textContent = filename;
+          info.appendChild(fileNameEl);
+
+          if (sizeStr) {
+            const sizeEl = document.createElement('div');
+            sizeEl.style.fontSize = '0.8rem';
+            sizeEl.style.opacity = '0.6';
+            sizeEl.textContent = sizeStr;
+            info.appendChild(sizeEl);
+          }
+
+          const downloadLink = document.createElement('a');
+          downloadLink.textContent = 'Download';
+          downloadLink.target = '_blank';
+          downloadLink.rel = 'noopener noreferrer';
+          downloadLink.download = filename;
+          downloadLink.style.padding = '6px 14px';
+          downloadLink.style.borderRadius = '6px';
+          downloadLink.style.background = 'var(--accent-color,#6366f1)';
+          downloadLink.style.color = '#fff';
+          downloadLink.style.textDecoration = 'none';
+          downloadLink.style.fontSize = '0.85rem';
+          downloadLink.style.whiteSpace = 'nowrap';
+          if (downloadUrl) {
+            downloadLink.href = downloadUrl;
+          }
+
+          outputContent.textContent = '';
+          card.append(iconEl, info, downloadLink);
           outputContent.appendChild(card);
           outputSection.style.display = 'block';
           return;
@@ -2799,34 +2975,53 @@ function addToolCall(name, input, status = 'running') {
   toolDiv.className = 'tool-call-item expanded'; // Show expanded by default
   toolDiv.dataset.toolId = id;
 
-  toolDiv.innerHTML = `
-    <div class="tool-call-header" onclick="toggleToolCall(this)">
-      <div class="tool-call-icon ${status}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-        </svg>
-      </div>
-      <div class="tool-call-info">
-        <div class="tool-call-name">${name}</div>
-        <div class="tool-call-status">${status === 'running' ? 'Running...' : 'Completed'}</div>
-      </div>
-      <div class="tool-call-expand">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </div>
+  const header = document.createElement('div');
+  header.className = 'tool-call-header';
+  header.innerHTML = `
+    <div class="tool-call-icon ${status}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+      </svg>
     </div>
-    <div class="tool-call-details">
-      <div class="tool-detail-section">
-        <div class="tool-detail-label">Input</div>
-        <pre>${escapeHtml(JSON.stringify(input, null, 2))}</pre>
-      </div>
-      <div class="tool-detail-section tool-output-section" style="display: none;">
-        <div class="tool-detail-label">Output</div>
-        <pre class="sidebar-tool-output"></pre>
-      </div>
+    <div class="tool-call-info">
+      <div class="tool-call-name"></div>
+      <div class="tool-call-status"></div>
+    </div>
+    <div class="tool-call-expand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
     </div>
   `;
+  header.querySelector('.tool-call-name').textContent = name || '';
+  header.querySelector('.tool-call-status').textContent = status === 'running' ? 'Running...' : 'Completed';
+  header.addEventListener('click', () => toggleToolCall(header));
+
+  const details = document.createElement('div');
+  details.className = 'tool-call-details';
+
+  const inputSection = document.createElement('div');
+  inputSection.className = 'tool-detail-section';
+  const inputLabel = document.createElement('div');
+  inputLabel.className = 'tool-detail-label';
+  inputLabel.textContent = 'Input';
+  const inputPre = document.createElement('pre');
+  inputPre.innerHTML = escapeHtml(JSON.stringify(input, null, 2));
+  inputSection.append(inputLabel, inputPre);
+
+  const outputSection = document.createElement('div');
+  outputSection.className = 'tool-detail-section tool-output-section';
+  outputSection.style.display = 'none';
+  const outputLabel = document.createElement('div');
+  outputLabel.className = 'tool-detail-label';
+  outputLabel.textContent = 'Output';
+  const outputPre = document.createElement('pre');
+  outputPre.className = 'sidebar-tool-output';
+  outputSection.append(outputLabel, outputPre);
+
+  details.append(inputSection, outputSection);
+
+  toolDiv.append(header, details);
 
   toolCallsList.appendChild(toolDiv);
   return toolCall;
@@ -3143,6 +3338,8 @@ function extractBrowserUrl(text) {
 
 // Create inline browser embed in chat
 function addInlineBrowserEmbed(contentDiv, url, sessionId) {
+  const safeUrl = typeof url === 'string' && /^https:\/\/live\.anchorbrowser\.io\?sessionId=/.test(url) ? url : '';
+
   // Remove any existing inline browser embeds (only one at a time)
   const existingEmbed = document.querySelector('.inline-browser-embed');
   if (existingEmbed) {
@@ -3152,65 +3349,105 @@ function addInlineBrowserEmbed(contentDiv, url, sessionId) {
   const browserDiv = document.createElement('div');
   browserDiv.className = 'inline-browser-embed';
   browserDiv.dataset.sessionId = sessionId;
-  browserDiv.dataset.url = url;
+  browserDiv.dataset.url = safeUrl;
 
-  browserDiv.innerHTML = `
-    <div class="browser-embed-header">
-      <div class="browser-header-left">
-        <svg class="browser-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="2" y1="12" x2="22" y2="12"></line>
-          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-        </svg>
-        <span class="browser-title">Live Browser</span>
-        <span class="browser-session-badge">Session Active</span>
-      </div>
-      <div class="browser-header-actions">
-        <button class="browser-action-btn" onclick="openBrowserInNewWindow('${url}')" title="Open in new window">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-            <polyline points="15 3 21 3 21 9"></polyline>
-            <line x1="10" y1="14" x2="21" y2="3"></line>
-          </svg>
-        </button>
-        <button class="browser-action-btn" onclick="moveBrowserToSidebar()" title="Move to sidebar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="15" y1="3" x2="15" y2="21"></line>
-          </svg>
-        </button>
-        <button class="browser-action-btn browser-fullscreen-btn" onclick="toggleBrowserFullscreen(this)" title="Fullscreen">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="15 3 21 3 21 9"></polyline>
-            <polyline points="9 21 3 21 3 15"></polyline>
-            <line x1="21" y1="3" x2="14" y2="10"></line>
-            <line x1="3" y1="21" x2="10" y2="14"></line>
-          </svg>
-        </button>
-      </div>
-    </div>
-    <div class="browser-embed-content">
-      <iframe
-        src="${url}"
-        class="browser-iframe"
-        allow="clipboard-read; clipboard-write; camera; microphone"
-        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
-      ></iframe>
-    </div>
-    <div class="browser-embed-footer">
-      <span class="browser-url">${url}</span>
-      <button class="browser-copy-url" onclick="copyBrowserUrl('${url}')" title="Copy URL">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-        </svg>
-      </button>
-    </div>
+  const header = document.createElement('div');
+  header.className = 'browser-embed-header';
+
+  const headerLeft = document.createElement('div');
+  headerLeft.className = 'browser-header-left';
+  headerLeft.innerHTML = `
+    <svg class="browser-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="2" y1="12" x2="22" y2="12"></line>
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+    </svg>
   `;
+
+  const title = document.createElement('span');
+  title.className = 'browser-title';
+  title.textContent = 'Live Browser';
+  const badge = document.createElement('span');
+  badge.className = 'browser-session-badge';
+  badge.textContent = 'Session Active';
+
+  const headerActions = document.createElement('div');
+  headerActions.className = 'browser-header-actions';
+
+  const openBtn = document.createElement('button');
+  openBtn.type = 'button';
+  openBtn.className = 'browser-action-btn';
+  openBtn.title = 'Open in new window';
+  openBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+      <polyline points="15 3 21 3 21 9"></polyline>
+      <line x1="10" y1="14" x2="21" y2="3"></line>
+    </svg>
+  `;
+  openBtn.addEventListener('click', () => openBrowserInNewWindow(safeUrl));
+
+  const sidebarBtn = document.createElement('button');
+  sidebarBtn.type = 'button';
+  sidebarBtn.className = 'browser-action-btn';
+  sidebarBtn.title = 'Move to sidebar';
+  sidebarBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+      <line x1="15" y1="3" x2="15" y2="21"></line>
+    </svg>
+  `;
+  sidebarBtn.addEventListener('click', moveBrowserToSidebar);
+
+  const fullscreenBtn = document.createElement('button');
+  fullscreenBtn.type = 'button';
+  fullscreenBtn.className = 'browser-action-btn browser-fullscreen-btn';
+  fullscreenBtn.title = 'Fullscreen';
+  fullscreenBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="15 3 21 3 21 9"></polyline>
+      <polyline points="9 21 3 21 3 15"></polyline>
+      <line x1="21" y1="3" x2="14" y2="10"></line>
+      <line x1="3" y1="21" x2="10" y2="14"></line>
+    </svg>
+  `;
+  fullscreenBtn.addEventListener('click', () => toggleBrowserFullscreen(fullscreenBtn));
+
+  const content = document.createElement('div');
+  content.className = 'browser-embed-content';
+
+  const iframe = document.createElement('iframe');
+  iframe.className = 'browser-iframe';
+  iframe.src = safeUrl || '';
+  iframe.allow = 'clipboard-read; clipboard-write; camera; microphone';
+  iframe.sandbox = 'allow-same-origin allow-scripts allow-forms allow-popups allow-modals';
+
+  const footer = document.createElement('div');
+  footer.className = 'browser-embed-footer';
+  const urlText = document.createElement('span');
+  urlText.className = 'browser-url';
+  urlText.textContent = safeUrl || '';
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'browser-copy-url';
+  copyBtn.title = 'Copy URL';
+  copyBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+  `;
+  copyBtn.addEventListener('click', () => copyBrowserUrl(safeUrl, copyBtn));
+
+  header.append(headerLeft, title, badge, headerActions);
+  headerActions.append(openBtn, sidebarBtn, fullscreenBtn);
+  content.appendChild(iframe);
+  footer.append(urlText, copyBtn);
+  browserDiv.append(header, content, footer);
 
   // Store active session
   activeBrowserSession = {
-    url: url,
+    url: safeUrl,
     sessionId: sessionId,
     inlineElement: browserDiv
   };
@@ -3242,6 +3479,7 @@ function moveBrowserToSidebar() {
 
 // Show browser in sidebar panel
 function showBrowserInSidebar(url, sessionId) {
+  const safeUrl = /^https:\/\/live\.anchorbrowser\.io\?sessionId=/.test(url || '') ? String(url) : '';
   // Check if browser section already exists
   let browserSection = document.getElementById('browserSection');
 
@@ -3250,38 +3488,57 @@ function showBrowserInSidebar(url, sessionId) {
     browserSection = document.createElement('div');
     browserSection.id = 'browserSection';
     browserSection.className = 'sidebar-section browser-section';
-    browserSection.innerHTML = `
-      <div class="section-header browser-section-header">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="2" y1="12" x2="22" y2="12"></line>
-          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-        </svg>
-        <span>Live Browser</span>
-        <div class="browser-sidebar-actions">
-          <button class="browser-sidebar-btn" onclick="moveBrowserToInline()" title="Show inline">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="9" y1="3" x2="9" y2="21"></line>
-            </svg>
-          </button>
-          <button class="browser-sidebar-btn" onclick="closeBrowserSession()" title="Close">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-      </div>
-      <div class="browser-sidebar-content">
-        <iframe
-          src="${url}"
-          class="browser-sidebar-iframe"
-          allow="clipboard-read; clipboard-write; camera; microphone"
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
-        ></iframe>
-      </div>
+    const sectionHeader = document.createElement('div');
+    sectionHeader.className = 'section-header browser-section-header';
+    sectionHeader.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+      </svg>
+      <span>Live Browser</span>
     `;
+
+    const actionWrap = document.createElement('div');
+    actionWrap.className = 'browser-sidebar-actions';
+
+    const inlineBtn = document.createElement('button');
+    inlineBtn.type = 'button';
+    inlineBtn.className = 'browser-sidebar-btn';
+    inlineBtn.title = 'Show inline';
+    inlineBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        <line x1="9" y1="3" x2="9" y2="21"></line>
+      </svg>
+    `;
+    inlineBtn.addEventListener('click', moveBrowserToInline);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'browser-sidebar-btn';
+    closeBtn.title = 'Close';
+    closeBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    `;
+    closeBtn.addEventListener('click', closeBrowserSession);
+
+    actionWrap.append(inlineBtn, closeBtn);
+    sectionHeader.appendChild(actionWrap);
+
+    const browserContent = document.createElement('div');
+    browserContent.className = 'browser-sidebar-content';
+    const sidebarIframe = document.createElement('iframe');
+    sidebarIframe.className = 'browser-sidebar-iframe';
+    sidebarIframe.allow = 'clipboard-read; clipboard-write; camera; microphone';
+    sidebarIframe.sandbox = 'allow-same-origin allow-scripts allow-forms allow-popups allow-modals';
+    sidebarIframe.src = safeUrl || '';
+    browserContent.appendChild(sidebarIframe);
+
+    browserSection.append(sectionHeader, browserContent);
 
     // Insert before tool calls section
     const toolCallsSection = sidebar.querySelector('.sidebar-section:last-child');
@@ -3290,7 +3547,7 @@ function showBrowserInSidebar(url, sessionId) {
     // Update existing iframe
     const iframe = browserSection.querySelector('.browser-sidebar-iframe');
     if (iframe) {
-      iframe.src = url;
+      iframe.src = safeUrl || '';
     }
   }
 
@@ -3300,7 +3557,7 @@ function showBrowserInSidebar(url, sessionId) {
   // Update session reference
   activeBrowserSession = {
     ...activeBrowserSession,
-    url: url,
+    url: safeUrl,
     sessionId: sessionId,
     sidebarElement: browserSection
   };
@@ -3345,6 +3602,7 @@ window.closeBrowserSession = function() {
 
 // Open browser in new window
 window.openBrowserInNewWindow = function(url) {
+  if (!url) return;
   window.open(url, '_blank', 'width=1200,height=800');
 }
 
@@ -3375,10 +3633,11 @@ window.toggleBrowserFullscreen = function(button) {
 }
 
 // Copy browser URL
-window.copyBrowserUrl = function(url) {
+window.copyBrowserUrl = function(url, button) {
+  if (!url) return;
   navigator.clipboard.writeText(url).then(() => {
     // Show brief feedback
-    const btn = document.querySelector('.browser-copy-url');
+    const btn = button || document.querySelector('.browser-copy-url');
     if (btn) {
       btn.style.color = '#4ade80';
       setTimeout(() => {
@@ -3456,22 +3715,30 @@ function renderSearchResults(results) {
     return;
   }
 
-  searchResults.innerHTML = results.map(r => {
+  searchResults.textContent = '';
+  const fragment = document.createDocumentFragment();
+
+  results.forEach((r) => {
     const score = Math.round((r.similarity || 0) * 100);
-    const preview = (r.content_preview || '').substring(0, 80);
-    const sourceLabel = r.source_type === 'attachment' ? 'file' : 'message';
-    return `<div class="search-result-item" data-source-type="${r.source_type}" data-source-id="${r.source_id}">
-      <span class="search-result-score">${score}%</span>
-      <div>${sourceLabel}: ${preview}</div>
-    </div>`;
-  }).join('');
+    const preview = typeof r.content_preview === 'string' ? r.content_preview.substring(0, 80) : '';
+    const sourceType = r.source_type || '';
+    const sourceId = r.source_id || '';
+    const sourceLabel = sourceType === 'attachment' ? 'file' : 'message';
 
-  // Click handler — navigate to source chat
-  searchResults.querySelectorAll('.search-result-item').forEach(item => {
+    const item = document.createElement('div');
+    item.className = 'search-result-item';
+    item.dataset.sourceType = String(sourceType);
+    item.dataset.sourceId = String(sourceId);
+
+    const scoreEl = document.createElement('span');
+    scoreEl.className = 'search-result-score';
+    scoreEl.textContent = `${score}%`;
+
+    const previewEl = document.createElement('div');
+    previewEl.textContent = `${sourceLabel}: ${preview}`;
+
+    item.append(scoreEl, previewEl);
     item.addEventListener('click', () => {
-      const sourceId = item.dataset.sourceId;
-      const sourceType = item.dataset.sourceType;
-
       if (sourceType === 'message') {
         // Find which chat contains this message
         const chat = allChats.find(c => c.messages && c.messages.some(m => m.id === sourceId));
@@ -3479,12 +3746,13 @@ function renderSearchResults(results) {
           loadChat(chat.id);
         }
       }
-
       searchInput.value = '';
       hideSearchResults();
     });
+    fragment.appendChild(item);
   });
 
+  searchResults.appendChild(fragment);
   searchResults.classList.remove('hidden');
 }
 

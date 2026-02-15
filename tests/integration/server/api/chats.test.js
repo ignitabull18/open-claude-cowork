@@ -47,6 +47,7 @@ describe('Chat CRUD endpoints', () => {
 
   beforeEach(() => {
     resetMockDB();
+    process.env.ALLOW_ANONYMOUS = 'false';
     token = createTestToken(TEST_USER);
     seedAuthUser(token, TEST_USER);
   });
@@ -240,6 +241,7 @@ describe('Chat CRUD endpoints', () => {
 
   describe('POST /api/messages', () => {
     it('adds a message to a chat', async () => {
+      seedTable('chats', [{ ...sampleChat, user_id: TEST_USER.id }]);
       seedTable('messages', []);
 
       const payload = {
@@ -263,6 +265,7 @@ describe('Chat CRUD endpoints', () => {
     });
 
     it('stores metadata on assistant messages', async () => {
+      seedTable('chats', [{ ...sampleChat, user_id: TEST_USER.id }]);
       seedTable('messages', []);
 
       const payload = {

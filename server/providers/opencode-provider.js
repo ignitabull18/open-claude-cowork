@@ -26,12 +26,13 @@ export class OpencodeProvider extends BaseProvider {
   /**
    * Abort an active query for a given chatId
    */
-  abort(chatId) {
-    const controller = this.abortControllers.get(chatId);
+  abort(chatId, userId) {
+    const key = this._buildSessionKey(chatId, userId);
+    const controller = this.abortControllers.get(key);
     if (controller) {
       console.log('[Opencode] Aborting query for chatId:', chatId);
       controller.abort();
-      this.abortControllers.delete(chatId);
+      this.abortControllers.delete(key);
       return true;
     }
     return false;
@@ -85,6 +86,7 @@ export class OpencodeProvider extends BaseProvider {
         mcpConfig[name] = {
           type: 'local',
           command: config.command,
+          args: config.args,
           environment: config.environment || {}
         };
       }
@@ -110,6 +112,7 @@ export class OpencodeProvider extends BaseProvider {
     const {
       prompt,
       chatId,
+      userId,
       mcpServers = {},
       model = null
     } = params;
@@ -122,13 +125,13 @@ export class OpencodeProvider extends BaseProvider {
     await this.initialize();
 
     // Check for existing session
-    let sessionId = chatId ? await this.getSession(chatId) : null;
+    let sessionId = chatId ? await this.getSession(chatId, userId) : null;
     console.log('[Opencode] Session for', chatId, ':', sessionId || 'new');
 
     // Create abort controller for this request
     const abortController = new AbortController();
     if (chatId) {
-      this.abortControllers.set(chatId, abortController);
+      this.abortControllers.set(this._buildSessionKey(chatId, userId), abortController);
     }
 
     try {
@@ -147,7 +150,7 @@ export class OpencodeProvider extends BaseProvider {
         });
         sessionId = sessionResult.data?.id || sessionResult.id;
         if (chatId && sessionId) {
-          this.setSession(chatId, sessionId);
+          this.setSession(chatId, sessionId, userId);
         }
         console.log('[Opencode] Session:', sessionId);
 
@@ -330,7 +333,7 @@ export class OpencodeProvider extends BaseProvider {
     } finally {
       // Clean up abort controller
       if (chatId) {
-        this.abortControllers.delete(chatId);
+        this.abortControllers.delete(this._buildSessionKey(chatId, userId));
       }
     }
   }

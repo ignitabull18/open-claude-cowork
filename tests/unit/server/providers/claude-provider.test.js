@@ -136,11 +136,11 @@ describe('ClaudeProvider', () => {
 
       const chunks = await collectChunks(provider.query({ prompt: 'hi' }));
 
-      expect(chunks).toContainEqual({
+      expect(chunks).toContainEqual(expect.objectContaining({
         type: 'text',
         content: 'Hello world!',
         provider: 'claude'
-      });
+      }));
     });
 
     it('yields tool_use chunks from assistant messages', async () => {
@@ -163,13 +163,13 @@ describe('ClaudeProvider', () => {
 
       const chunks = await collectChunks(provider.query({ prompt: 'read test.js' }));
 
-      expect(chunks).toContainEqual({
+      expect(chunks).toContainEqual(expect.objectContaining({
         type: 'tool_use',
         name: 'Read',
         input: { file: 'test.js' },
         id: 'tool-1',
         provider: 'claude'
-      });
+      }));
     });
 
     it('yields tool_result chunks', async () => {

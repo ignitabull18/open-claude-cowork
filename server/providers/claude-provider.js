@@ -27,15 +27,17 @@ export class ClaudeProvider extends BaseProvider {
    * @param {string} chatId
    * @param {string} requestId
    * @param {{ behavior: 'allow'|'deny', message?: string }} decision
+   * @param {string} [userId]
    */
-  resolvePermission(chatId, requestId, decision) {
-    const chatPerms = this.pendingPermissions.get(chatId);
+  resolvePermission(chatId, requestId, decision, userId) {
+    const key = this._buildSessionKey(chatId, userId);
+    const chatPerms = this.pendingPermissions.get(key);
     if (!chatPerms) return false;
     const pending = chatPerms.get(requestId);
     if (!pending) return false;
     pending.resolve(decision);
     chatPerms.delete(requestId);
-    if (chatPerms.size === 0) this.pendingPermissions.delete(chatId);
+    if (chatPerms.size === 0) this.pendingPermissions.delete(key);
     return true;
   }
 
@@ -46,12 +48,13 @@ export class ClaudeProvider extends BaseProvider {
   /**
    * Abort an active query for a given chatId
    */
-  abort(chatId) {
-    const controller = this.abortControllers.get(chatId);
+  abort(chatId, userId) {
+    const key = this._buildSessionKey(chatId, userId);
+    const controller = this.abortControllers.get(key);
     if (controller) {
       console.log('[Claude] Aborting query for chatId:', chatId);
       controller.abort();
-      this.abortControllers.delete(chatId);
+      this.abortControllers.delete(key);
       return true;
     }
     return false;
@@ -73,6 +76,7 @@ export class ClaudeProvider extends BaseProvider {
     const {
       prompt,
       chatId,
+      userId,
       mcpServers = {},
       allowedTools = this.defaultAllowedTools,
       maxTurns = this.defaultMaxTurns,
@@ -107,14 +111,15 @@ export class ClaudeProvider extends BaseProvider {
     if (permissionMode !== 'bypassPermissions') {
       queryOptions.canUseTool = async (toolName, input) => {
         const requestId = `perm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const key = this._buildSessionKey(chatId, userId);
 
         // Store resolver so resolvePermission() can fulfil it from the HTTP endpoint
-        if (!this.pendingPermissions.has(chatId)) {
-          this.pendingPermissions.set(chatId, new Map());
+        if (!this.pendingPermissions.has(key)) {
+          this.pendingPermissions.set(key, new Map());
         }
 
         const decision = await new Promise(resolve => {
-          this.pendingPermissions.get(chatId).set(requestId, { resolve });
+          this.pendingPermissions.get(key).set(requestId, { resolve });
 
           // Push permission request event to the queue — SSE loop will emit it
           permissionQueue.push({
@@ -123,6 +128,7 @@ export class ClaudeProvider extends BaseProvider {
             toolName,
             input,
             chatId,
+            userId: userId || 'anonymous',
             provider: this.name
           });
         });
@@ -133,7 +139,7 @@ export class ClaudeProvider extends BaseProvider {
     }
 
     // Check for existing session - matches server.js session resumption logic
-    const existingSessionId = chatId ? await this.getSession(chatId) : null;
+    const existingSessionId = chatId ? await this.getSession(chatId, userId) : null;
     console.log('[Claude] Existing session ID for', chatId, ':', existingSessionId || 'none (new chat)');
 
     // If we have an existing session, resume it
@@ -147,7 +153,7 @@ export class ClaudeProvider extends BaseProvider {
     // Create abort controller for this request
     const abortController = new AbortController();
     if (chatId) {
-      this.abortControllers.set(chatId, abortController);
+      this.abortControllers.set(this._buildSessionKey(chatId, userId), abortController);
     }
 
     try {
@@ -212,7 +218,7 @@ export class ClaudeProvider extends BaseProvider {
         if (chunk.type === 'system' && chunk.subtype === 'init') {
           const newSessionId = chunk.session_id || chunk.data?.session_id || chunk.sessionId;
           if (newSessionId && chatId) {
-            this.setSession(chatId, newSessionId);
+            this.setSession(chatId, newSessionId, userId);
             console.log('[Claude] Session ID captured:', newSessionId);
             console.log('[Claude] Total sessions stored:', this.sessions.size);
           } else {
@@ -337,8 +343,9 @@ export class ClaudeProvider extends BaseProvider {
     } finally {
       // Clean up abort controller and permission queue
       if (chatId) {
-        this.abortControllers.delete(chatId);
-        this.pendingPermissions.delete(chatId);
+        const key = this._buildSessionKey(chatId, userId);
+        this.abortControllers.delete(key);
+        this.pendingPermissions.delete(key);
       }
       permissionQueue.close();
     }

@@ -187,12 +187,11 @@ describe('report-store.js', () => {
       expect(result.name).toBe('My Report');
     });
 
-    it('throws when report is not found', async () => {
+    it('returns null when report is not found', async () => {
       seedTable('saved_reports', []);
 
-      await expect(getSavedReport('nonexistent', 'user-1')).rejects.toEqual(
-        expect.objectContaining({ code: 'PGRST116' })
-      );
+      const report = await getSavedReport('nonexistent', 'user-1');
+      expect(report).toBeNull();
     });
   });
 

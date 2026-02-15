@@ -52,6 +52,7 @@ describe('Report endpoints', () => {
 
   beforeEach(() => {
     resetMockDB();
+    process.env.ALLOW_ANONYMOUS = 'false';
     token = createTestToken(TEST_USER);
     seedAuthUser(token, TEST_USER);
   });

@@ -145,6 +145,9 @@ describe('chat-store.js', () => {
 
   describe('addMessage', () => {
     it('inserts a new message', async () => {
+      seedTable('chats', [
+        { id: 'chat-1', user_id: 'user-1', title: 'Test Chat', updated_at: '2025-01-01T00:00:00Z' }
+      ]);
       seedTable('messages', []);
 
       const result = await addMessage({
@@ -163,6 +166,9 @@ describe('chat-store.js', () => {
     });
 
     it('defaults html to empty string and metadata to empty object', async () => {
+      seedTable('chats', [
+        { id: 'chat-1', user_id: 'user-1', title: 'Test Chat', updated_at: '2025-01-01T00:00:00Z' }
+      ]);
       seedTable('messages', []);
 
       const result = await addMessage({
@@ -211,6 +217,36 @@ describe('chat-store.js', () => {
       const result = await getProfile('nonexistent');
 
       expect(result).toBeNull();
+    });
+
+    it('rejects adding a message to a missing chat', async () => {
+      seedTable('chats', []);
+      seedTable('messages', []);
+
+      await expect(
+        addMessage({
+          chatId: 'missing-chat',
+          userId: 'user-1',
+          role: 'user',
+          content: 'Hello'
+        })
+      ).rejects.toEqual(expect.objectContaining({ code: 'PGRST116' }));
+    });
+
+    it('rejects adding a message to a chat owned by another user', async () => {
+      seedTable('chats', [
+        { id: 'chat-2', user_id: 'user-2', title: 'Other user chat', updated_at: '2025-01-01T00:00:00Z' }
+      ]);
+      seedTable('messages', []);
+
+      await expect(
+        addMessage({
+          chatId: 'chat-2',
+          userId: 'user-1',
+          role: 'user',
+          content: 'Hello'
+        })
+      ).rejects.toEqual(expect.objectContaining({ code: 'CHAT_FORBIDDEN' }));
     });
   });
 

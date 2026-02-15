@@ -45,9 +45,23 @@ const allowedOrigins = new Set(configuredOrigins.length ? configuredOrigins : DE
 
 function isOriginAllowed(origin) {
   if (!origin) return true; // file:// and non-browser calls
-  if (origin === 'null') return true; // file:// access from local apps
   if (allowedOrigins.has('*')) return true;
   return allowedOrigins.has(origin);
+}
+
+function shouldFailDbWrite(err) {
+  return !!(err && ['CHAT_FORBIDDEN', 'CHAT_OWNERSHIP_VIOLATION', 'PGRST116', 'VALIDATION_ERROR'].includes(err.code));
+}
+
+async function assertChatOwnedByUser(chatId, userId) {
+  const owner = await chatStore.getChatOwner(chatId);
+  if (!owner) {
+    return { ok: false, code: 'not_found' };
+  }
+  if (owner !== userId) {
+    return { ok: false, code: 'forbidden' };
+  }
+  return { ok: true };
 }
 
 /** Load user-settings from disk; apply API keys to process.env so SDKs use them. */
@@ -1270,16 +1284,20 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     clearInterval(heartbeatInterval);
   });
 
-  try {
-    // Persist chat + user message to Supabase (non-blocking for anonymous)
-    if (isSupabaseConfigured() && userId !== 'anonymous') {
-      try {
-        await chatStore.createChat({ id: chatId, userId, title: message.substring(0, 60), provider: providerName, model });
-        await chatStore.addMessage({ chatId, userId, role: 'user', content: message });
-      } catch (dbErr) {
-        console.error('[CHAT] DB write error (non-fatal):', dbErr.message);
+    try {
+      // Persist chat + user message to Supabase (non-blocking for anonymous)
+      if (isSupabaseConfigured() && userId !== 'anonymous') {
+        try {
+          await chatStore.createChat({ id: chatId, userId, title: message.substring(0, 60), provider: providerName, model });
+          await chatStore.addMessage({ chatId, userId, role: 'user', content: message });
+        } catch (dbErr) {
+          // If chat ownership/auth checks fail, don't continue the stream.
+          if (shouldFailDbWrite(dbErr)) {
+            throw dbErr;
+          }
+          console.error('[CHAT] DB write error (non-fatal):', dbErr.message);
+        }
       }
-    }
 
     // Get or create Composio session for this user
     let composioSession = composioSessions.get(userId);
@@ -1432,7 +1450,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 });
 
 // Abort endpoint to stop active queries
-app.post('/api/abort', requireAuth, (req, res) => {
+app.post('/api/abort', requireAuth, async (req, res) => {
   const { chatId, provider: providerName = 'claude' } = req.body;
 
   if (!chatId) {
@@ -1442,8 +1460,17 @@ app.post('/api/abort', requireAuth, (req, res) => {
   console.log('[ABORT] Request to abort chatId:', chatId, 'provider:', providerName);
 
   try {
+    const userId = req.user.id;
+    if (isSupabaseConfigured() && userId !== 'anonymous') {
+      const ownership = await assertChatOwnedByUser(chatId, userId);
+      if (!ownership.ok) {
+        const status = ownership.code === 'forbidden' ? 403 : 404;
+        return res.status(status).json({ error: 'Unauthorized to abort this chat' });
+      }
+    }
+
     const provider = getProvider(providerName);
-    const aborted = provider.abort(chatId);
+    const aborted = provider.abort(chatId, req.user.id);
 
     if (aborted) {
       console.log('[ABORT] Successfully aborted chatId:', chatId);
@@ -1459,7 +1486,7 @@ app.post('/api/abort', requireAuth, (req, res) => {
 });
 
 // Permission response endpoint — resolves pending permission requests from the UI
-app.post('/api/permission-response', requireAuth, (req, res) => {
+app.post('/api/permission-response', requireAuth, async (req, res) => {
   const { chatId, requestId, behavior, message: denyMessage } = req.body;
 
   if (!chatId || !requestId || !behavior) {
@@ -1473,12 +1500,21 @@ app.post('/api/permission-response', requireAuth, (req, res) => {
   console.log('[PERMISSION] Response for', requestId, ':', behavior);
 
   try {
+    const userId = req.user.id;
+    if (isSupabaseConfigured() && userId !== 'anonymous') {
+      const ownership = await assertChatOwnedByUser(chatId, userId);
+      if (!ownership.ok) {
+        const status = ownership.code === 'forbidden' ? 403 : 404;
+        return res.status(status).json({ error: 'Unauthorized to resolve permission for this chat' });
+      }
+    }
+
     const provider = getProvider('claude');
     const decision = { behavior };
     if (behavior === 'deny' && denyMessage) {
       decision.message = denyMessage;
     }
-    const resolved = provider.resolvePermission(chatId, requestId, decision);
+    const resolved = provider.resolvePermission(chatId, requestId, decision, userId);
 
     if (resolved) {
       res.json({ success: true });

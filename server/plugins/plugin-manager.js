@@ -56,6 +56,37 @@ export class PluginManager {
     return results;
   }
 
+  _normalizeDirName(rawDirName) {
+    const value = String(rawDirName || '').trim();
+    if (!value) {
+      throw new Error('Invalid plugin directory name');
+    }
+
+    const normalized = value
+      .replace(/\.git$/i, '')
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/^\.+/, '')
+      .slice(0, 64);
+
+    if (!normalized || normalized === '.' || normalized === '..' || normalized.includes('..')) {
+      throw new Error('Invalid plugin directory name');
+    }
+
+    return normalized;
+  }
+
+  _resolvePluginPath(rawDirName) {
+    const safeDirName = this._normalizeDirName(rawDirName);
+    const root = path.resolve(PLUGINS_DIR);
+    const target = path.resolve(root, safeDirName);
+
+    if (!target.startsWith(`${root}${path.sep}`)) {
+      throw new Error('Invalid plugin path');
+    }
+
+    return { safeDirName, target };
+  }
+
   /**
    * List all plugins with their enabled/disabled status.
    */
@@ -105,23 +136,27 @@ export class PluginManager {
    * @returns {{ name, manifest }} on success
    */
   installPlugin(gitUrl, dirName) {
-    const repoName = dirName || gitUrl.split('/').pop().replace(/\.git$/, '');
-    const dest = path.join(PLUGINS_DIR, repoName);
+    if (!gitUrl || typeof gitUrl !== 'string') {
+      throw new Error('Invalid git URL');
+    }
 
-    if (fs.existsSync(dest)) {
-      throw new Error(`Plugin directory "${repoName}" already exists. Remove it first.`);
+    const rawName = dirName || gitUrl.split('/').pop();
+    const { safeDirName, target } = this._resolvePluginPath(rawName);
+
+    if (fs.existsSync(target)) {
+      throw new Error(`Plugin directory "${safeDirName}" already exists. Remove it first.`);
     }
 
     try {
-      execFileSync('git', ['clone', '--depth', '1', gitUrl, dest], { stdio: 'pipe', timeout: 60000 });
+      execFileSync('git', ['clone', '--depth', '1', gitUrl, target], { stdio: 'pipe', timeout: 60000 });
     } catch (err) {
       throw new Error(`Failed to clone plugin: ${err.message}`);
     }
 
-    const manifest = this._readManifest(repoName);
+    const manifest = this._readManifest(safeDirName);
     if (!manifest) {
       // Clean up — not a valid plugin
-      fs.rmSync(dest, { recursive: true, force: true });
+      fs.rmSync(target, { recursive: true, force: true });
       throw new Error('Cloned repository is not a valid plugin (missing .claude-plugin/plugin.json)');
     }
 
@@ -130,32 +165,33 @@ export class PluginManager {
     if (!settings.plugins) settings.plugins = { enabled: [], installed: [] };
     if (!settings.plugins.installed) settings.plugins.installed = [];
     settings.plugins.installed.push({
-      name: manifest.name || repoName,
+      name: manifest.name || safeDirName,
       source: gitUrl,
       installedAt: new Date().toISOString()
     });
     // Auto-enable
     if (!settings.plugins.enabled) settings.plugins.enabled = [];
-    if (!settings.plugins.enabled.includes(manifest.name || repoName)) {
-      settings.plugins.enabled.push(manifest.name || repoName);
+    if (!settings.plugins.enabled.includes(manifest.name || safeDirName)) {
+      settings.plugins.enabled.push(manifest.name || safeDirName);
     }
     this._writeSettings(settings);
 
-    return { name: manifest.name || repoName, manifest };
+    return { name: manifest.name || safeDirName, manifest };
   }
 
   /**
    * Remove an installed plugin by directory name.
    */
   removePlugin(dirName) {
-    const dest = path.join(PLUGINS_DIR, dirName);
+    const { safeDirName, target } = this._resolvePluginPath(dirName);
+    const dest = target;
     if (!fs.existsSync(dest)) {
       throw new Error(`Plugin "${dirName}" not found`);
     }
 
     // Read manifest to get the logical name before deleting
-    const manifest = this._readManifest(dirName);
-    const name = manifest?.name || dirName;
+    const manifest = this._readManifest(safeDirName);
+    const name = manifest?.name || safeDirName;
 
     fs.rmSync(dest, { recursive: true, force: true });
 

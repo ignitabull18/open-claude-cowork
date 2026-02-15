@@ -54,6 +54,8 @@ describe('Auth, Profile, and Access endpoints', () => {
 
   beforeEach(() => {
     resetMockDB();
+    process.env.ALLOW_ANONYMOUS = 'false';
+    process.env.ADMIN_EMAILS = 'admin@test.com';
 
     userToken = createTestToken(TEST_USER);
     adminToken = createTestToken(TEST_ADMIN);

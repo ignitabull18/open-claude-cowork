@@ -2,10 +2,61 @@ import { getAdminClient } from './client.js';
 
 const db = () => getAdminClient();
 
-export async function createChat({ id, userId, title, provider, model }) {
+function ownershipError(message, code = 'CHAT_FORBIDDEN') {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+export async function getChatOwner(chatId) {
   const { data, error } = await db()
     .from('chats')
-    .upsert({ id, user_id: userId, title, provider, model }, { onConflict: 'id' })
+    .select('user_id')
+    .eq('id', chatId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+
+  return data?.user_id || null;
+}
+
+export async function createChat({ id, userId, title, provider, model }) {
+  if (!id) {
+    const err = new Error('chat id is required');
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+
+  const existingOwner = await getChatOwner(id);
+
+  if (existingOwner) {
+    if (existingOwner !== userId) {
+      throw ownershipError('Chat id already belongs to another user', 'CHAT_OWNERSHIP_VIOLATION');
+    }
+
+    const payload = {};
+    if (title !== undefined) payload.title = title;
+    if (provider !== undefined) payload.provider = provider;
+    if (model !== undefined) payload.model = model;
+
+    const { data: existingData, error: existingErr } = await db()
+      .from('chats')
+      .update(payload)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (existingErr) throw existingErr;
+    return existingData;
+  }
+
+  const { data, error } = await db()
+    .from('chats')
+    .insert({ id, user_id: userId, title, provider, model })
     .select()
     .single();
   if (error) throw error;
@@ -63,6 +114,16 @@ export async function updateChatTitle(chatId, userId, title) {
 }
 
 export async function addMessage({ chatId, userId, role, content, html, metadata }) {
+  const owner = await getChatOwner(chatId);
+
+  if (!owner) {
+    throw ownershipError('Chat not found', 'PGRST116');
+  }
+
+  if (owner !== userId) {
+    throw ownershipError('Chat does not belong to this user', 'CHAT_FORBIDDEN');
+  }
+
   const { data, error } = await db()
     .from('messages')
     .insert({ chat_id: chatId, user_id: userId, role, content, html: html || '', metadata: metadata || {} })

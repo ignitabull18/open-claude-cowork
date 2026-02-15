@@ -7,9 +7,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
-      // server/ has its own node_modules — force all imports of @supabase/supabase-js
-      // to resolve to the same path so vi.mock() intercepts transitive imports
-      '@supabase/supabase-js': path.resolve(__dirname, 'server/node_modules/@supabase/supabase-js')
+      // server/ has its own node_modules — force all imports to resolve to the
+      // same path so vi.mock() intercepts transitive imports from source files
+      '@supabase/supabase-js': path.resolve(__dirname, 'server/node_modules/@supabase/supabase-js'),
+      'playwright': path.resolve(__dirname, 'server/node_modules/playwright'),
+      '@anthropic-ai/claude-agent-sdk': path.resolve(__dirname, 'server/node_modules/@anthropic-ai/claude-agent-sdk'),
+      '@opencode-ai/sdk': path.resolve(__dirname, 'server/node_modules/@opencode-ai/sdk')
     }
   },
   test: {
