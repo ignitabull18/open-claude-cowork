@@ -3559,3 +3559,43 @@ body {
 .exec-status-success { color: #166534; }
 .exec-status-failed { color: #b91c1c; }
 .exec-status-running { color: #d97706; }
+
+/* ==================== BROWSER SETTINGS ==================== */
+
+.settings-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.settings-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-coral);
+}
+
+.settings-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+.settings-hint code {
+  background: var(--bg-cream);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* ==================== BROWSER SCREENSHOT ==================== */
+
+.browser-screenshot-img {
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  margin-top: 8px;
+}
