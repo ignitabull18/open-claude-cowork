@@ -80,6 +80,33 @@ const settingsBrowserHeadless = document.getElementById('settingsBrowserHeadless
 const settingsSaveBrowserBtn = document.getElementById('settingsSaveBrowserBtn');
 const settingsBrowserStatus = document.getElementById('settingsBrowserStatus');
 
+// DOM Elements - Instructions Settings
+const settingsGlobalInstructions = document.getElementById('settingsGlobalInstructions');
+const settingsFolderInstructionsList = document.getElementById('settingsFolderInstructionsList');
+const settingsAddFolderInstructionBtn = document.getElementById('settingsAddFolderInstructionBtn');
+const settingsFolderInstructionForm = document.getElementById('settingsFolderInstructionForm');
+const settingsFolderPath = document.getElementById('settingsFolderPath');
+const settingsFolderInstructionsText = document.getElementById('settingsFolderInstructionsText');
+const settingsFolderSaveBtn = document.getElementById('settingsFolderSaveBtn');
+const settingsFolderCancelBtn = document.getElementById('settingsFolderCancelBtn');
+const settingsSaveInstructionsBtn = document.getElementById('settingsSaveInstructionsBtn');
+const settingsInstructionsStatus = document.getElementById('settingsInstructionsStatus');
+
+// DOM Elements - Vault
+const vaultView = document.getElementById('vaultView');
+const vaultBackBtn = document.getElementById('vaultBackBtn');
+const vaultNewFolderBtn = document.getElementById('vaultNewFolderBtn');
+const vaultUploadBtn = document.getElementById('vaultUploadBtn');
+const vaultFileInput = document.getElementById('vaultFileInput');
+const vaultBreadcrumbs = document.getElementById('vaultBreadcrumbs');
+const vaultSourceFilter = document.getElementById('vaultSourceFilter');
+const vaultSortSelect = document.getElementById('vaultSortSelect');
+const vaultViewToggle = document.getElementById('vaultViewToggle');
+const vaultContent = document.getElementById('vaultContent');
+const vaultUnavailable = document.getElementById('vaultUnavailable');
+const vaultGrid = document.getElementById('vaultGrid');
+const vaultEmpty = document.getElementById('vaultEmpty');
+
 // DOM Elements - Auth
 const authView = document.getElementById('authView');
 const authForm = document.getElementById('authForm');
@@ -99,6 +126,26 @@ const searchContainer = document.getElementById('searchContainer');
 const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('searchResults');
 
+// DOM Elements - Artifact Panel
+const tabProgress = document.getElementById('tabProgress');
+const tabArtifact = document.getElementById('tabArtifact');
+const progressPanel = document.getElementById('progressPanel');
+const artifactPanel = document.getElementById('artifactPanel');
+const artifactLangBadge = document.getElementById('artifactLangBadge');
+const artifactTitle = document.getElementById('artifactTitle');
+const artifactVersionInfo = document.getElementById('artifactVersionInfo');
+const codeEditorWrap = document.getElementById('codeEditorWrap');
+const codeEditor = document.getElementById('codeEditor');
+const lineNumbers = document.getElementById('lineNumbers');
+const docEditorWrap = document.getElementById('docEditorWrap');
+const docEditor = document.getElementById('docEditor');
+const docToolbar = document.getElementById('docToolbar');
+const artifactCopyBtn = document.getElementById('artifactCopyBtn');
+const artifactDownloadBtn = document.getElementById('artifactDownloadBtn');
+const artifactUndoBtn = document.getElementById('artifactUndoBtn');
+const artifactRedoBtn = document.getElementById('artifactRedoBtn');
+const selectionToolbar = document.getElementById('selectionToolbar');
+
 // Auth state
 let authMode = 'signin'; // 'signin' or 'signup'
 let isAuthEnabled = false; // true if Supabase is configured
@@ -115,6 +162,11 @@ let isWaitingForResponse = false;
 
 let activeBrowserSession = null; // { url: string, sessionId: string, inlineElement: HTMLElement }
 let browserDisplayMode = 'hidden'; // 'inline' | 'sidebar' | 'hidden'
+
+// Artifact state
+const artifactStore = new Map();
+let activeArtifactId = null;
+let artifactCounter = 0;
 
 // Multi-chat state
 let allChats = [];
@@ -153,6 +205,7 @@ async function init() {
   updateGreeting();
   setupEventListeners();
   setupAuthListeners();
+  initArtifactPanel();
 
   // Check backend health banner
   const banner = document.getElementById('backendBanner');
@@ -418,6 +471,7 @@ function saveState() {
     }),
     todos,
     toolCalls,
+    artifacts: serializeArtifacts(),
     provider: selectedProvider,
     model: selectedModel,
     updatedAt: Date.now()
@@ -551,6 +605,8 @@ function loadChat(chat) {
   isFirstMessage = false;
   todos = chat.todos || [];
   toolCalls = chat.toolCalls || [];
+  clearArtifacts();
+  if (chat.artifacts) restoreArtifacts(chat.artifacts);
 
   // Restore provider/model for this chat
   if (chat.provider && providerModels[chat.provider]) {
@@ -643,6 +699,28 @@ function renderChatMessages(messages) {
     }
 
     chatMessages.appendChild(messageDiv);
+
+    // Re-inject artifact pills for assistant messages with code blocks
+    if (msgData.class.includes('assistant') && contentDiv.dataset.rawContent) {
+      // Check if artifacts were already restored from saved state
+      const restoredArts = [...artifactStore.values()].filter(a =>
+        a.versions[0] && contentDiv.dataset.rawContent.includes(a.versions[0])
+      );
+      if (restoredArts.length) {
+        restoredArts.forEach(art => injectArtifactPill(contentDiv, art));
+      } else {
+        // No restored artifacts — detect fresh ones
+        const arts = detectArtifacts(contentDiv.dataset.rawContent);
+        arts.forEach(art => {
+          artifactStore.set(art.id, {
+            id: art.id, type: art.type, language: art.language,
+            title: art.title, versions: [art.content], currentVersion: 0,
+            messageId: messageDiv.dataset?.messageId || null
+          });
+          injectArtifactPill(contentDiv, art);
+        });
+      }
+    }
   });
   scrollToBottom();
 }
@@ -761,6 +839,7 @@ async function loadSettings() {
     renderSettingsMcpList(data.mcpServers || []);
     hideSettingsMcpForm();
     renderBrowserSettings(data.browser);
+    renderInstructions(data.instructions);
   } catch (err) {
     if (settingsKeysStatus) {
       settingsKeysStatus.textContent = err.message && err.message.includes('404')
@@ -956,6 +1035,128 @@ async function saveBrowserSettings() {
   }
 }
 
+// ==================== Instructions Settings ====================
+
+let folderInstructionsData = []; // local copy for CRUD
+let editingFolderIndex = -1;     // -1 = adding new, >=0 = editing existing
+
+function renderInstructions(instructions) {
+  const inst = instructions || { global: '', folders: [] };
+  if (settingsGlobalInstructions) settingsGlobalInstructions.value = inst.global || '';
+  folderInstructionsData = Array.isArray(inst.folders) ? inst.folders.map(f => ({ ...f })) : [];
+  renderFolderInstructionsList();
+  if (settingsInstructionsStatus) settingsInstructionsStatus.textContent = '';
+}
+
+function renderFolderInstructionsList() {
+  if (!settingsFolderInstructionsList) return;
+  if (folderInstructionsData.length === 0) {
+    settingsFolderInstructionsList.textContent = '';
+    const p = document.createElement('p');
+    p.style.cssText = 'color:var(--text-muted);font-size:13px;';
+    p.textContent = 'No folder instructions configured.';
+    settingsFolderInstructionsList.appendChild(p);
+    return;
+  }
+  settingsFolderInstructionsList.textContent = '';
+  folderInstructionsData.forEach((f, i) => {
+    const item = document.createElement('div');
+    item.className = 'mcp-server-item';
+    item.style.marginBottom = '8px';
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+
+    const info = document.createElement('div');
+    const pathEl = document.createElement('strong');
+    pathEl.style.fontSize = '13px';
+    pathEl.textContent = f.path;
+    const desc = document.createElement('p');
+    desc.style.cssText = 'margin:2px 0 0;font-size:12px;color:var(--text-muted);';
+    const preview = (f.instructions || '').substring(0, 80);
+    desc.textContent = preview + ((f.instructions || '').length > 80 ? '...' : '');
+    info.appendChild(pathEl);
+    info.appendChild(desc);
+
+    const btns = document.createElement('div');
+    const editBtn = document.createElement('button');
+    editBtn.className = 'settings-btn';
+    editBtn.style.cssText = 'margin-right:4px;padding:2px 8px;font-size:12px;';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => openFolderInstructionForm(i));
+    const delBtn = document.createElement('button');
+    delBtn.className = 'settings-btn';
+    delBtn.style.cssText = 'padding:2px 8px;font-size:12px;color:var(--error);';
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', () => {
+      folderInstructionsData.splice(i, 1);
+      renderFolderInstructionsList();
+    });
+    btns.appendChild(editBtn);
+    btns.appendChild(delBtn);
+
+    row.appendChild(info);
+    row.appendChild(btns);
+    item.appendChild(row);
+    settingsFolderInstructionsList.appendChild(item);
+  });
+}
+
+function openFolderInstructionForm(index) {
+  if (!settingsFolderInstructionForm) return;
+  editingFolderIndex = index === null || index === undefined ? -1 : index;
+  if (editingFolderIndex >= 0 && folderInstructionsData[editingFolderIndex]) {
+    settingsFolderPath.value = folderInstructionsData[editingFolderIndex].path || '';
+    settingsFolderInstructionsText.value = folderInstructionsData[editingFolderIndex].instructions || '';
+  } else {
+    settingsFolderPath.value = '';
+    settingsFolderInstructionsText.value = '';
+  }
+  settingsFolderInstructionForm.style.display = 'block';
+}
+
+function cancelFolderInstruction() {
+  if (settingsFolderInstructionForm) settingsFolderInstructionForm.style.display = 'none';
+  editingFolderIndex = -1;
+}
+
+function saveFolderInstruction() {
+  const path = (settingsFolderPath ? settingsFolderPath.value : '').trim();
+  const instructions = (settingsFolderInstructionsText ? settingsFolderInstructionsText.value : '').trim();
+  if (!path) return;
+  const entry = { path, instructions };
+  if (editingFolderIndex >= 0) {
+    folderInstructionsData[editingFolderIndex] = entry;
+  } else {
+    folderInstructionsData.push(entry);
+  }
+  renderFolderInstructionsList();
+  cancelFolderInstruction();
+}
+
+async function saveInstructions() {
+  if (!window.electronAPI || typeof window.electronAPI.updateSettings !== 'function') return;
+  const body = {
+    instructions: {
+      global: settingsGlobalInstructions ? settingsGlobalInstructions.value : '',
+      folders: folderInstructionsData
+    }
+  };
+  try {
+    const data = await window.electronAPI.updateSettings(body);
+    cachedSettings.instructions = data.instructions;
+    if (settingsInstructionsStatus) {
+      settingsInstructionsStatus.textContent = 'Saved.';
+      settingsInstructionsStatus.classList.remove('error');
+    }
+  } catch (err) {
+    if (settingsInstructionsStatus) {
+      settingsInstructionsStatus.textContent = err.message || 'Save failed';
+      settingsInstructionsStatus.classList.add('error');
+    }
+  }
+}
+
 // Setup all event listeners
 function setupEventListeners() {
   // Home form
@@ -999,6 +1200,11 @@ function setupEventListeners() {
   const jobsBackBtn = document.getElementById('jobsBackBtn');
   if (reportsSidebarBtn) reportsSidebarBtn.addEventListener('click', () => showView('reports'));
   if (jobsSidebarBtn) jobsSidebarBtn.addEventListener('click', () => showView('jobs'));
+  const tasksSidebarBtn = document.getElementById('tasksSidebarBtn');
+  if (tasksSidebarBtn) tasksSidebarBtn.addEventListener('click', () => showView('tasks'));
+  const vaultSidebarBtn = document.getElementById('vaultSidebarBtn');
+  if (vaultSidebarBtn) vaultSidebarBtn.addEventListener('click', () => showView('vault'));
+  if (vaultBackBtn) vaultBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
   if (reportsBackBtn) reportsBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
   if (jobsBackBtn) jobsBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
   if (settingsSaveKeysBtn) settingsSaveKeysBtn.addEventListener('click', saveSettingsKeys);
@@ -1017,6 +1223,12 @@ function setupEventListeners() {
   if (settingsBrowserBackend) settingsBrowserBackend.addEventListener('change', toggleBrowserOptionsVisibility);
   if (settingsBrowserMode) settingsBrowserMode.addEventListener('change', toggleBrowserOptionsVisibility);
   if (settingsSaveBrowserBtn) settingsSaveBrowserBtn.addEventListener('click', saveBrowserSettings);
+
+  // Instructions settings
+  if (settingsAddFolderInstructionBtn) settingsAddFolderInstructionBtn.addEventListener('click', () => openFolderInstructionForm(null));
+  if (settingsFolderCancelBtn) settingsFolderCancelBtn.addEventListener('click', cancelFolderInstruction);
+  if (settingsFolderSaveBtn) settingsFolderSaveBtn.addEventListener('click', saveFolderInstruction);
+  if (settingsSaveInstructionsBtn) settingsSaveInstructionsBtn.addEventListener('click', saveInstructions);
 
   // File attachment buttons
   const homeAttachBtn = document.getElementById('homeAttachBtn');
@@ -1447,6 +1659,9 @@ function showView(viewName) {
   if (reportsView) reportsView.classList.toggle('hidden', viewName !== 'reports');
   const jobsViewEl = document.getElementById('jobsView');
   if (jobsViewEl) jobsViewEl.classList.toggle('hidden', viewName !== 'jobs');
+  const tasksViewEl = document.getElementById('tasksView');
+  if (tasksViewEl) tasksViewEl.classList.toggle('hidden', viewName !== 'tasks');
+  if (vaultView) vaultView.classList.toggle('hidden', viewName !== 'vault');
   if (viewName === 'settings') {
     lastViewBeforeSettings = currentMainView;
     loadSettings();
@@ -1462,6 +1677,14 @@ function showView(viewName) {
   if (viewName === 'jobs') {
     lastViewBeforeSettings = currentMainView;
     initJobsView();
+  }
+  if (viewName === 'tasks') {
+    lastViewBeforeSettings = currentMainView;
+    if (typeof window.tasksView !== 'undefined') window.tasksView.load();
+  }
+  if (viewName === 'vault') {
+    lastViewBeforeSettings = currentMainView;
+    initVaultView();
   }
   currentMainView = viewName;
 }
@@ -1786,6 +2009,23 @@ function appendToContent(contentDiv, content) {
   container.dataset.rawContent += content;
   renderMarkdownContainer(container);
 
+  // Detect completed artifacts in streamed content
+  const detectedArts = detectArtifacts(contentDiv.dataset.rawContent);
+  detectedArts.forEach(art => {
+    // Check if this artifact content is already tracked (avoid duplicates across chunks)
+    const alreadyTracked = [...artifactStore.values()].some(a => a.versions[0] === art.content);
+    if (!alreadyTracked) {
+      const msgEl = contentDiv.closest('.message');
+      artifactStore.set(art.id, {
+        id: art.id, type: art.type, language: art.language,
+        title: art.title, versions: [art.content], currentVersion: 0,
+        messageId: msgEl?.dataset?.messageId || null
+      });
+      injectArtifactPill(contentDiv, art);
+      openArtifactPanel(art.id);
+    }
+  });
+
   // Check for Anchor Browser live URL in content
   const browserInfo = extractBrowserUrl(contentDiv.dataset.rawContent);
   if (browserInfo && !activeBrowserSession) {
@@ -1854,12 +2094,13 @@ window.startNewChat = function() {
   toolCalls = [];
   attachedFiles = [];
 
-  // Reset sidebar
+  // Reset sidebar and artifacts
   stepsList.innerHTML = '';
   emptySteps.style.display = 'block';
   stepsCount.textContent = '0 steps';
   toolCallsList.innerHTML = '';
   emptyTools.style.display = 'block';
+  clearArtifacts();
 
   // Switch back to home view
   showView('home');
@@ -3275,6 +3516,677 @@ async function toggleJobExecutions(jobId) {
   } catch (err) {
     panel.textContent = 'Error loading executions.';
   }
+}
+
+// ─── Artifact Panel Logic ─────────────────────────────────────────────────────
+
+function detectArtifacts(rawContent) {
+  const artifacts = [];
+  const codeBlockRe = /```(\w+)?\n([\s\S]*?)```/g;
+  let match;
+  while ((match = codeBlockRe.exec(rawContent)) !== null) {
+    const lang = match[1] || 'text';
+    const code = match[2];
+    const id = 'art_' + (++artifactCounter);
+    artifacts.push({ id, type: 'code', language: lang, content: code.trimEnd(), title: deriveTitle(lang) });
+  }
+  if (!artifacts.length) {
+    const docRe = /^(#{1,3}\s+.+)\n([\s\S]{400,})/m;
+    const dm = docRe.exec(rawContent);
+    if (dm) {
+      const id = 'art_' + (++artifactCounter);
+      artifacts.push({ id, type: 'document', language: 'markdown', content: rawContent, title: dm[1].replace(/^#+\s*/, '') });
+    }
+  }
+  return artifacts;
+}
+
+function deriveTitle(lang) {
+  const exts = { python: 'script.py', javascript: 'script.js', typescript: 'script.ts', html: 'page.html', css: 'style.css', json: 'data.json', bash: 'script.sh', shell: 'script.sh', sql: 'query.sql', rust: 'main.rs', go: 'main.go', java: 'Main.java', ruby: 'script.rb', php: 'script.php', c: 'main.c', cpp: 'main.cpp', swift: 'main.swift', kotlin: 'Main.kt', yaml: 'config.yaml', toml: 'config.toml', xml: 'data.xml' };
+  return exts[lang] || lang + ' snippet';
+}
+
+function injectArtifactPill(contentDiv, artifact) {
+  const codeBlocks = contentDiv.querySelectorAll('pre code');
+  const pill = document.createElement('button');
+  pill.className = 'artifact-pill';
+  pill.textContent = 'Open in editor: ' + artifact.title;
+  pill.dataset.artifactId = artifact.id;
+  pill.addEventListener('click', () => openArtifactPanel(artifact.id));
+  const lastBlock = codeBlocks[codeBlocks.length - 1];
+  if (lastBlock && lastBlock.closest('pre')) {
+    lastBlock.closest('pre').insertAdjacentElement('afterend', pill);
+  } else {
+    contentDiv.appendChild(pill);
+  }
+}
+
+function openArtifactPanel(id) {
+  const art = artifactStore.get(id);
+  if (!art) return;
+  activeArtifactId = id;
+  if (tabArtifact) tabArtifact.disabled = false;
+  switchSidebarTab('artifact');
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar && !sidebar.classList.contains('open')) sidebar.classList.add('open');
+  if (artifactLangBadge) { artifactLangBadge.textContent = art.language; artifactLangBadge.style.display = ''; }
+  if (artifactTitle) artifactTitle.textContent = art.title;
+  updateVersionInfo();
+  if (art.type === 'code') {
+    if (codeEditorWrap) codeEditorWrap.style.display = '';
+    if (docEditorWrap) docEditorWrap.style.display = 'none';
+  } else {
+    if (codeEditorWrap) codeEditorWrap.style.display = 'none';
+    if (docEditorWrap) docEditorWrap.style.display = '';
+  }
+  refreshEditorContent();
+  updateUndoRedoButtons();
+}
+
+function updateVersionInfo() {
+  const art = artifactStore.get(activeArtifactId);
+  if (!art || !artifactVersionInfo) return;
+  artifactVersionInfo.textContent = 'v' + (art.currentVersion + 1) + ' of ' + art.versions.length;
+}
+
+function updateUndoRedoButtons() {
+  const art = artifactStore.get(activeArtifactId);
+  if (!art) return;
+  if (artifactUndoBtn) artifactUndoBtn.disabled = art.currentVersion <= 0;
+  if (artifactRedoBtn) artifactRedoBtn.disabled = art.currentVersion >= art.versions.length - 1;
+}
+
+function updateLineNumbers() {
+  if (!codeEditor || !lineNumbers) return;
+  const lines = codeEditor.value.split('\n').length;
+  lineNumbers.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
+}
+
+function pushArtifactVersion(id, newContent) {
+  const art = artifactStore.get(id);
+  if (!art) return;
+  art.versions = art.versions.slice(0, art.currentVersion + 1);
+  art.versions.push(newContent);
+  art.currentVersion = art.versions.length - 1;
+  updateVersionInfo();
+  updateUndoRedoButtons();
+}
+
+function switchSidebarTab(tab) {
+  if (tabProgress) tabProgress.classList.toggle('active', tab === 'progress');
+  if (tabArtifact) tabArtifact.classList.toggle('active', tab === 'artifact');
+  if (progressPanel) progressPanel.classList.toggle('active', tab === 'progress');
+  if (artifactPanel) artifactPanel.classList.toggle('active', tab === 'artifact');
+}
+
+function getArtifactsForMessage(msgEl) {
+  const out = [];
+  artifactStore.forEach((art) => {
+    if (art.messageId && msgEl.dataset?.messageId === art.messageId) {
+      out.push({ id: art.id || undefined, type: art.type, language: art.language, title: art.title, versions: art.versions, currentVersion: art.currentVersion });
+    }
+  });
+  return out.length ? out : undefined;
+}
+
+function refreshEditorContent() {
+  const art = artifactStore.get(activeArtifactId);
+  if (!art) return;
+  const content = art.versions[art.currentVersion];
+  if (art.type === 'code') {
+    if (codeEditor) { codeEditor.value = content; updateLineNumbers(); }
+  } else {
+    if (docEditor) docEditor.innerHTML = marked.parse(content);
+  }
+}
+
+function initArtifactPanel() {
+  if (tabProgress) tabProgress.addEventListener('click', () => switchSidebarTab('progress'));
+  if (tabArtifact) tabArtifact.addEventListener('click', () => { if (!tabArtifact.disabled) switchSidebarTab('artifact'); });
+
+  if (codeEditor) {
+    codeEditor.addEventListener('input', () => {
+      updateLineNumbers();
+      if (activeArtifactId) pushArtifactVersion(activeArtifactId, codeEditor.value);
+    });
+    codeEditor.addEventListener('scroll', () => { if (lineNumbers) lineNumbers.scrollTop = codeEditor.scrollTop; });
+    codeEditor.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = codeEditor.selectionStart;
+        const end = codeEditor.selectionEnd;
+        codeEditor.value = codeEditor.value.substring(0, start) + '  ' + codeEditor.value.substring(end);
+        codeEditor.selectionStart = codeEditor.selectionEnd = start + 2;
+        codeEditor.dispatchEvent(new Event('input'));
+      }
+    });
+  }
+
+  if (docEditor) {
+    docEditor.addEventListener('input', () => { if (activeArtifactId) pushArtifactVersion(activeArtifactId, docEditor.innerHTML); });
+  }
+
+  if (docToolbar) {
+    docToolbar.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-cmd]');
+      if (!btn) return;
+      document.execCommand(btn.dataset.cmd, false, btn.dataset.val || null);
+      docEditor?.focus();
+    });
+  }
+
+  if (artifactCopyBtn) {
+    artifactCopyBtn.addEventListener('click', () => {
+      const art = artifactStore.get(activeArtifactId);
+      if (!art) return;
+      navigator.clipboard.writeText(art.versions[art.currentVersion]).then(() => {
+        artifactCopyBtn.textContent = 'Copied!';
+        setTimeout(() => { artifactCopyBtn.textContent = 'Copy'; }, 1500);
+      });
+    });
+  }
+
+  if (artifactDownloadBtn) {
+    artifactDownloadBtn.addEventListener('click', () => {
+      const art = artifactStore.get(activeArtifactId);
+      if (!art) return;
+      const blob = new Blob([art.versions[art.currentVersion]], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = art.title; a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  if (artifactUndoBtn) {
+    artifactUndoBtn.addEventListener('click', () => {
+      const art = artifactStore.get(activeArtifactId);
+      if (!art || art.currentVersion <= 0) return;
+      art.currentVersion--;
+      refreshEditorContent(); updateVersionInfo(); updateUndoRedoButtons();
+    });
+  }
+  if (artifactRedoBtn) {
+    artifactRedoBtn.addEventListener('click', () => {
+      const art = artifactStore.get(activeArtifactId);
+      if (!art || art.currentVersion >= art.versions.length - 1) return;
+      art.currentVersion++;
+      refreshEditorContent(); updateVersionInfo(); updateUndoRedoButtons();
+    });
+  }
+
+  initSelectionToolbar();
+}
+
+function initSelectionToolbar() {
+  if (!selectionToolbar) return;
+  const editorEls = [codeEditor, docEditor].filter(Boolean);
+  editorEls.forEach(el => {
+    el.addEventListener('mouseup', () => {
+      const sel = window.getSelection();
+      const text = el === codeEditor ? codeEditor.value.substring(codeEditor.selectionStart, codeEditor.selectionEnd) : sel?.toString();
+      if (text && text.trim().length > 0) {
+        const rect = el === codeEditor ? el.getBoundingClientRect() : sel.getRangeAt(0).getBoundingClientRect();
+        selectionToolbar.style.top = (rect.top - 44) + 'px';
+        selectionToolbar.style.left = rect.left + 'px';
+        selectionToolbar.style.display = 'flex';
+        selectionToolbar.dataset.selectedText = text;
+      } else {
+        selectionToolbar.style.display = 'none';
+      }
+    });
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (!selectionToolbar.contains(e.target) && e.target !== codeEditor && e.target !== docEditor) {
+      selectionToolbar.style.display = 'none';
+    }
+  });
+
+  selectionToolbar.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const selected = selectionToolbar.dataset.selectedText || '';
+    const art = artifactStore.get(activeArtifactId);
+    if (!art || !selected) return;
+    let prompt;
+    const fullContent = art.versions[art.currentVersion];
+    if (action === 'ask') {
+      const question = window.prompt('Ask about the selection:');
+      if (!question) return;
+      prompt = question + '\n\nSelected text:\n> ' + selected + '\n\nFull artifact:\n```' + art.language + '\n' + fullContent + '\n```';
+    } else {
+      const labels = { explain: 'Explain', improve: 'Improve', fix: 'Fix' };
+      prompt = (labels[action] || action) + ' the following selection from the artifact:\n\n> ' + selected + '\n\nFull artifact:\n```' + art.language + '\n' + fullContent + '\n```';
+    }
+    selectionToolbar.style.display = 'none';
+    if (typeof handleSendMessage === 'function') {
+      messageInput.value = prompt;
+      handleSendMessage(prompt);
+    }
+  });
+}
+
+function clearArtifacts() {
+  artifactStore.clear();
+  activeArtifactId = null;
+  artifactCounter = 0;
+  if (tabArtifact) tabArtifact.disabled = true;
+  switchSidebarTab('progress');
+  if (codeEditorWrap) codeEditorWrap.style.display = 'none';
+  if (docEditorWrap) docEditorWrap.style.display = 'none';
+}
+
+function serializeArtifacts() {
+  const out = [];
+  artifactStore.forEach((art, id) => {
+    out.push({ id, type: art.type, language: art.language, title: art.title, versions: art.versions, currentVersion: art.currentVersion, messageId: art.messageId });
+  });
+  return out;
+}
+
+function restoreArtifacts(list) {
+  if (!Array.isArray(list)) return;
+  clearArtifacts();
+  list.forEach(art => {
+    artifactStore.set(art.id, { ...art });
+    const num = parseInt(art.id.replace('art_', ''), 10);
+    if (num > artifactCounter) artifactCounter = num;
+  });
+  if (artifactStore.size > 0 && tabArtifact) tabArtifact.disabled = false;
+}
+
+// ==================== ASSETS VAULT ====================
+let vaultInitialized = false;
+let currentVaultFolderId = null;
+let vaultViewMode = 'grid'; // 'grid' or 'list'
+
+function initVaultView() {
+  if (vaultInitialized) return;
+  vaultInitialized = true;
+  setupVaultEventListeners();
+  const api = useApi();
+  if (!api) {
+    if (vaultContent) vaultContent.classList.add('hidden');
+    if (vaultUnavailable) vaultUnavailable.classList.remove('hidden');
+    return;
+  }
+  if (vaultContent) vaultContent.classList.remove('hidden');
+  if (vaultUnavailable) vaultUnavailable.classList.add('hidden');
+  loadVaultContents();
+}
+
+function setupVaultEventListeners() {
+  if (vaultNewFolderBtn) vaultNewFolderBtn.addEventListener('click', promptNewFolder);
+  if (vaultUploadBtn) vaultUploadBtn.addEventListener('click', () => vaultFileInput && vaultFileInput.click());
+  if (vaultFileInput) vaultFileInput.addEventListener('change', handleVaultUpload);
+  if (vaultSourceFilter) vaultSourceFilter.addEventListener('change', loadVaultContents);
+  if (vaultSortSelect) vaultSortSelect.addEventListener('change', loadVaultContents);
+  if (vaultViewToggle) vaultViewToggle.addEventListener('click', toggleVaultViewMode);
+}
+
+function toggleVaultViewMode() {
+  vaultViewMode = vaultViewMode === 'grid' ? 'list' : 'grid';
+  if (vaultGrid) vaultGrid.classList.toggle('list-mode', vaultViewMode === 'list');
+  if (vaultViewToggle) {
+    // Clear and re-add the appropriate SVG icon
+    while (vaultViewToggle.firstChild) vaultViewToggle.removeChild(vaultViewToggle.firstChild);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '16');
+    svg.setAttribute('height', '16');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    if (vaultViewMode === 'list') {
+      // Grid icon (switch back)
+      ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h7v7h-7z'].forEach(d => {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        rect.setAttribute('d', d);
+        svg.appendChild(rect);
+      });
+    } else {
+      // List icon (switch to list)
+      [4, 12, 20].forEach(y => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', '3'); line.setAttribute('y1', String(y));
+        line.setAttribute('x2', '21'); line.setAttribute('y2', String(y));
+        svg.appendChild(line);
+      });
+    }
+    vaultViewToggle.appendChild(svg);
+  }
+}
+
+async function loadVaultContents() {
+  const api = useApi();
+  if (!api) return;
+  try {
+    const source = vaultSourceFilter ? vaultSourceFilter.value : 'all';
+    const sortVal = vaultSortSelect ? vaultSortSelect.value : 'created_at:desc';
+    const [sortField, sortDir] = sortVal.split(':');
+
+    const [foldersRes, assetsRes] = await Promise.all([
+      api.getVaultFolders(currentVaultFolderId || undefined),
+      api.getVaultAssets({
+        folderId: currentVaultFolderId || undefined,
+        sort: sortField,
+        dir: sortDir,
+        source: source !== 'all' ? source : undefined
+      })
+    ]);
+
+    const folders = foldersRes.folders || [];
+    const assets = assetsRes.assets || [];
+
+    renderVaultBreadcrumbs();
+    renderVaultGrid(folders, assets);
+  } catch (err) {
+    console.error('[VAULT] Load error:', err);
+  }
+}
+
+function renderVaultGrid(folders, assets) {
+  if (!vaultGrid) return;
+  vaultGrid.textContent = '';
+
+  if (folders.length === 0 && assets.length === 0) {
+    if (vaultEmpty) vaultEmpty.classList.remove('hidden');
+    vaultGrid.classList.add('hidden');
+    return;
+  }
+  if (vaultEmpty) vaultEmpty.classList.add('hidden');
+  vaultGrid.classList.remove('hidden');
+
+  // Render folders
+  folders.forEach(folder => {
+    const card = document.createElement('div');
+    card.className = 'vault-item vault-folder';
+    card.dataset.id = folder.id;
+
+    const icon = document.createElement('div');
+    icon.className = 'vault-item-icon';
+    icon.textContent = '\uD83D\uDCC1'; // folder emoji
+    card.appendChild(icon);
+
+    const name = document.createElement('div');
+    name.className = 'vault-item-name';
+    name.textContent = folder.name;
+    card.appendChild(name);
+
+    card.addEventListener('dblclick', () => navigateToFolder(folder.id));
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showVaultContextMenu(e, 'folder', folder);
+    });
+    vaultGrid.appendChild(card);
+  });
+
+  // Render assets
+  assets.forEach(asset => {
+    const card = document.createElement('div');
+    card.className = 'vault-item vault-asset';
+    card.dataset.id = asset.id;
+
+    const icon = document.createElement('div');
+    icon.className = 'vault-item-icon';
+    if (asset.file_type && asset.file_type.startsWith('image/')) {
+      icon.textContent = '\uD83D\uDDBC\uFE0F'; // framed picture
+    } else if (asset.file_type && asset.file_type.includes('pdf')) {
+      icon.textContent = '\uD83D\uDCC4'; // page facing up
+    } else if (asset.file_type && (asset.file_type.includes('video') || asset.file_type.includes('audio'))) {
+      icon.textContent = '\uD83C\uDFAC'; // clapper board
+    } else {
+      icon.textContent = '\uD83D\uDCC4'; // page facing up
+    }
+    card.appendChild(icon);
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'vault-item-name';
+    nameEl.textContent = asset.display_name || asset.file_name;
+    card.appendChild(nameEl);
+
+    const meta = document.createElement('div');
+    meta.className = 'vault-item-meta';
+    meta.textContent = formatVaultFileSize(asset.file_size || 0);
+    card.appendChild(meta);
+
+    card.addEventListener('dblclick', () => openAssetPreview(asset));
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showVaultContextMenu(e, 'asset', asset);
+    });
+    vaultGrid.appendChild(card);
+  });
+}
+
+async function renderVaultBreadcrumbs() {
+  if (!vaultBreadcrumbs) return;
+  vaultBreadcrumbs.textContent = '';
+
+  // Root crumb
+  const rootCrumb = document.createElement('span');
+  rootCrumb.className = 'vault-crumb';
+  rootCrumb.textContent = 'Downloads';
+  rootCrumb.addEventListener('click', () => navigateToFolder(null));
+  vaultBreadcrumbs.appendChild(rootCrumb);
+
+  if (!currentVaultFolderId) return;
+
+  const api = useApi();
+  if (!api) return;
+  try {
+    const res = await api.getVaultBreadcrumbs(currentVaultFolderId);
+    const crumbs = res.breadcrumbs || [];
+    crumbs.forEach(crumb => {
+      const sep = document.createElement('span');
+      sep.className = 'vault-crumb-sep';
+      sep.textContent = '/';
+      vaultBreadcrumbs.appendChild(sep);
+
+      const el = document.createElement('span');
+      el.className = 'vault-crumb';
+      el.textContent = crumb.name;
+      el.addEventListener('click', () => navigateToFolder(crumb.id));
+      vaultBreadcrumbs.appendChild(el);
+    });
+  } catch (err) {
+    console.error('[VAULT] Breadcrumbs error:', err);
+  }
+}
+
+function navigateToFolder(folderId) {
+  currentVaultFolderId = folderId;
+  loadVaultContents();
+}
+
+async function promptNewFolder() {
+  const name = prompt('Folder name:');
+  if (!name || !name.trim()) return;
+  const api = useApi();
+  if (!api) return;
+  try {
+    await api.createVaultFolder(name.trim(), currentVaultFolderId || undefined);
+    loadVaultContents();
+  } catch (err) {
+    console.error('[VAULT] Create folder error:', err);
+    alert('Failed to create folder: ' + err.message);
+  }
+}
+
+async function handleVaultUpload() {
+  if (!vaultFileInput || !vaultFileInput.files.length) return;
+  const api = useApi();
+  if (!api) return;
+  const file = vaultFileInput.files[0];
+  try {
+    await api.uploadVaultAsset(file, currentVaultFolderId || undefined, 'upload');
+    vaultFileInput.value = '';
+    loadVaultContents();
+  } catch (err) {
+    console.error('[VAULT] Upload error:', err);
+    alert('Upload failed: ' + err.message);
+  }
+}
+
+function showVaultContextMenu(e, type, item) {
+  // Remove any existing context menu
+  const prev = document.querySelector('.vault-context-menu');
+  if (prev) prev.remove();
+
+  const menu = document.createElement('div');
+  menu.className = 'vault-context-menu';
+  menu.style.position = 'fixed';
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+  menu.style.zIndex = '9999';
+
+  const actions = type === 'folder'
+    ? [['Rename', 'rename'], ['Delete', 'delete']]
+    : [['Open', 'open'], ['Rename', 'rename'], ['Download', 'download'], ['Delete', 'delete']];
+
+  actions.forEach(([label, action]) => {
+    const btn = document.createElement('div');
+    btn.className = 'vault-context-item';
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      menu.remove();
+      if (type === 'folder') handleFolderAction(action, item);
+      else handleAssetAction(action, item);
+    });
+    menu.appendChild(btn);
+  });
+
+  document.body.appendChild(menu);
+
+  // Close on click elsewhere
+  const close = (ev) => {
+    if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', close); }
+  };
+  setTimeout(() => document.addEventListener('click', close), 0);
+}
+
+async function handleFolderAction(action, folder) {
+  const api = useApi();
+  if (!api) return;
+  if (action === 'rename') {
+    const name = prompt('New folder name:', folder.name);
+    if (!name || !name.trim()) return;
+    try {
+      await api.updateVaultFolder(folder.id, { name: name.trim() });
+      loadVaultContents();
+    } catch (err) { alert('Rename failed: ' + err.message); }
+  } else if (action === 'delete') {
+    if (!confirm('Delete folder "' + folder.name + '" and all contents?')) return;
+    try {
+      await api.deleteVaultFolder(folder.id);
+      loadVaultContents();
+    } catch (err) { alert('Delete failed: ' + err.message); }
+  }
+}
+
+async function handleAssetAction(action, asset) {
+  const api = useApi();
+  if (!api) return;
+  if (action === 'open') {
+    openAssetPreview(asset);
+  } else if (action === 'rename') {
+    const name = prompt('New name:', asset.display_name || asset.file_name);
+    if (!name || !name.trim()) return;
+    try {
+      await api.updateVaultAsset(asset.id, { display_name: name.trim() });
+      loadVaultContents();
+    } catch (err) { alert('Rename failed: ' + err.message); }
+  } else if (action === 'download') {
+    try {
+      const res = await api.getVaultAssetUrl(asset.id);
+      if (res.url) {
+        const a = document.createElement('a');
+        a.href = res.url;
+        a.download = asset.display_name || asset.file_name;
+        a.click();
+      }
+    } catch (err) { alert('Download failed: ' + err.message); }
+  } else if (action === 'delete') {
+    if (!confirm('Delete "' + (asset.display_name || asset.file_name) + '"?')) return;
+    try {
+      await api.deleteVaultAsset(asset.id);
+      loadVaultContents();
+    } catch (err) { alert('Delete failed: ' + err.message); }
+  }
+}
+
+async function openAssetPreview(asset) {
+  const api = useApi();
+  if (!api) return;
+  try {
+    const res = await api.getVaultAssetUrl(asset.id);
+    if (!res.url) return;
+
+    // Build preview overlay using DOM methods
+    const overlay = document.createElement('div');
+    overlay.className = 'vault-preview-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'vault-preview-modal';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'vault-preview-header';
+    const title = document.createElement('span');
+    title.textContent = asset.display_name || asset.file_name;
+    header.appendChild(title);
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'vault-preview-close';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'vault-preview-body';
+
+    if (asset.file_type && asset.file_type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = res.url;
+      img.alt = asset.display_name || asset.file_name;
+      img.style.maxWidth = '100%';
+      img.style.maxHeight = '70vh';
+      body.appendChild(img);
+    } else if (asset.file_type && asset.file_type.includes('pdf')) {
+      const iframe = document.createElement('iframe');
+      iframe.src = res.url;
+      iframe.style.width = '100%';
+      iframe.style.height = '70vh';
+      iframe.style.border = 'none';
+      body.appendChild(iframe);
+    } else {
+      const p = document.createElement('p');
+      p.textContent = 'Preview not available for this file type.';
+      const a = document.createElement('a');
+      a.href = res.url;
+      a.target = '_blank';
+      a.textContent = 'Open in browser';
+      body.appendChild(p);
+      body.appendChild(a);
+    }
+    modal.appendChild(body);
+    overlay.appendChild(modal);
+
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  } catch (err) {
+    console.error('[VAULT] Preview error:', err);
+  }
+}
+
+function formatVaultFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
 }
 
 // Initialize on load

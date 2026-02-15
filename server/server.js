@@ -17,6 +17,8 @@ import { searchSimilar, embedMessage } from './supabase/embeddings.js';
 import { setupCronJobs, startEmbeddingCron } from './supabase/cron.js';
 import * as reportStore from './supabase/report-store.js';
 import * as jobStore from './supabase/job-store.js';
+import * as taskStore from './supabase/task-store.js';
+import * as vaultStore from './supabase/vault-store.js';
 import { startScheduler, triggerJob } from './job-scheduler.js';
 import { BrowserServer, createBrowserMcpServer } from './browser/index.js';
 
@@ -280,7 +282,39 @@ function readUserSettingsFile() {
   if (!data.browser) {
     data.browser = { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 };
   }
+  // Ensure instructions have defaults
+  if (!data.instructions) {
+    data.instructions = { global: '', folders: [] };
+  }
+  // Ensure permissions have defaults
+  if (!data.permissions) {
+    data.permissions = { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true };
+  }
   return data;
+}
+
+/**
+ * Build a system prompt appendix from global + folder instructions.
+ * Returns empty string when no instructions are configured.
+ */
+function buildSystemPrompt() {
+  const data = readUserSettingsFile();
+  const instructions = data.instructions || { global: '', folders: [] };
+  const parts = [];
+
+  if (instructions.global && instructions.global.trim()) {
+    parts.push('# User Instructions\n' + instructions.global.trim());
+  }
+
+  if (Array.isArray(instructions.folders)) {
+    for (const folder of instructions.folders) {
+      if (folder.path && folder.instructions && folder.instructions.trim()) {
+        parts.push(`# Instructions for ${folder.path}\n${folder.instructions.trim()}`);
+      }
+    }
+  }
+
+  return parts.join('\n\n');
 }
 
 /**
@@ -469,6 +503,10 @@ app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => 
   try {
     const chatId = req.body.chatId || null;
     const attachment = await storage.uploadFile(req.user.id, req.file, chatId);
+    // Tag chat-originated uploads so they appear in the vault
+    if (chatId && attachment.id) {
+      try { await vaultStore.updateAsset(attachment.id, req.user.id, { source: 'chat' }); } catch (_) {}
+    }
     res.json(attachment);
   } catch (err) {
     console.error('[UPLOAD] Error:', err);
@@ -484,6 +522,157 @@ app.get('/api/files/:attachmentId/url', requireAuth, async (req, res) => {
     res.json({ url });
   } catch (err) {
     console.error('[FILES] URL error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== VAULT ENDPOINTS ====================
+
+// List folders at a given level (root when parentId is omitted)
+app.get('/api/vault/folders', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    const folders = await vaultStore.getUserFolders(req.user.id, req.query.parentId || null);
+    res.json(folders);
+  } catch (err) {
+    console.error('[VAULT] List folders error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create folder
+app.post('/api/vault/folders', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  const { name, parentId } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  try {
+    const folder = await vaultStore.createFolder(req.user.id, name, parentId || null);
+    res.json(folder);
+  } catch (err) {
+    console.error('[VAULT] Create folder error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Rename or move folder
+app.patch('/api/vault/folders/:id', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    let folder;
+    if (req.body.name) {
+      folder = await vaultStore.renameFolder(req.params.id, req.user.id, req.body.name);
+    }
+    if (req.body.parentId !== undefined) {
+      folder = await vaultStore.moveFolder(req.params.id, req.user.id, req.body.parentId);
+    }
+    res.json(folder || { ok: true });
+  } catch (err) {
+    console.error('[VAULT] Update folder error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete folder (cascade)
+app.delete('/api/vault/folders/:id', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    await vaultStore.deleteFolder(req.params.id, req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[VAULT] Delete folder error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Folder breadcrumbs
+app.get('/api/vault/folders/:id/breadcrumbs', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    const crumbs = await vaultStore.getFolderBreadcrumbs(req.params.id, req.user.id);
+    res.json(crumbs);
+  } catch (err) {
+    console.error('[VAULT] Breadcrumbs error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// List vault assets
+app.get('/api/vault/assets', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    const assets = await vaultStore.getVaultAssets(req.user.id, req.query.folderId || null, {
+      sort: req.query.sort,
+      dir: req.query.dir,
+      source: req.query.source,
+      limit: parseInt(req.query.limit) || 50,
+      offset: parseInt(req.query.offset) || 0
+    });
+    res.json(assets);
+  } catch (err) {
+    console.error('[VAULT] List assets error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upload to vault
+app.post('/api/vault/assets/upload', requireAuth, upload.single('file'), async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  if (!req.file) return res.status(400).json({ error: 'No file provided' });
+  try {
+    const folderId = req.body.folderId || null;
+    const source = req.body.source || 'upload';
+    const attachment = await storage.uploadVaultFile(req.user.id, req.file, folderId, source);
+    res.json(attachment);
+  } catch (err) {
+    console.error('[VAULT] Upload error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update asset (move, rename, describe)
+app.patch('/api/vault/assets/:id', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    const asset = await vaultStore.updateAsset(req.params.id, req.user.id, req.body);
+    res.json(asset);
+  } catch (err) {
+    console.error('[VAULT] Update asset error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete asset
+app.delete('/api/vault/assets/:id', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    await storage.deleteFile(req.params.id, req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[VAULT] Delete asset error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Signed URL for asset
+app.get('/api/vault/assets/:id/url', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    const url = await storage.getFileUrl(req.params.id, req.user.id);
+    res.json({ url });
+  } catch (err) {
+    console.error('[VAULT] Asset URL error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Vault stats
+app.get('/api/vault/stats', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    const stats = await vaultStore.getVaultStats(req.user.id);
+    res.json(stats);
+  } catch (err) {
+    console.error('[VAULT] Stats error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -802,6 +991,165 @@ app.post('/api/jobs/:jobId/run', requireAuth, async (req, res) => {
   }
 });
 
+// ==================== TASK MANAGEMENT ENDPOINTS ====================
+
+// --- Labels (before :taskId to avoid param capture) ---
+app.get('/api/tasks/labels', requireAuth, async (req, res) => {
+  try {
+    const labels = await taskStore.getUserLabels(req.user.id);
+    res.json(labels);
+  } catch (err) {
+    console.error('[TASKS] List labels error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/tasks/labels', requireAuth, async (req, res) => {
+  try {
+    const label = await taskStore.createLabel(req.user.id, req.body);
+    res.status(201).json(label);
+  } catch (err) {
+    console.error('[TASKS] Create label error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/tasks/labels/:labelId', requireAuth, async (req, res) => {
+  try {
+    const label = await taskStore.updateLabel(req.params.labelId, req.user.id, req.body);
+    res.json(label);
+  } catch (err) {
+    console.error('[TASKS] Update label error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/tasks/labels/:labelId', requireAuth, async (req, res) => {
+  try {
+    await taskStore.deleteLabel(req.params.labelId, req.user.id);
+    res.status(204).end();
+  } catch (err) {
+    console.error('[TASKS] Delete label error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Calendar / Board helpers (before :taskId) ---
+app.get('/api/tasks/calendar/range', requireAuth, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ error: 'start and end query params required' });
+    const tasks = await taskStore.getTasksInRange(req.user.id, start, end);
+    res.json(tasks);
+  } catch (err) {
+    console.error('[TASKS] Calendar range error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/tasks/board', requireAuth, async (req, res) => {
+  try {
+    const tasks = await taskStore.getTasksByStatus(req.user.id);
+    res.json(tasks);
+  } catch (err) {
+    console.error('[TASKS] Board error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Tasks CRUD ---
+app.get('/api/tasks', requireAuth, async (req, res) => {
+  try {
+    const opts = {};
+    if (req.query.status) opts.status = req.query.status;
+    if (req.query.priority !== undefined) opts.priority = parseInt(req.query.priority, 10);
+    if (req.query.search) opts.search = req.query.search;
+    if (req.query.limit) opts.limit = parseInt(req.query.limit, 10);
+    const tasks = await taskStore.getUserTasks(req.user.id, opts);
+    res.json(tasks);
+  } catch (err) {
+    console.error('[TASKS] List error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/tasks', requireAuth, async (req, res) => {
+  try {
+    if (!req.body.title) return res.status(400).json({ error: 'title is required' });
+    const task = await taskStore.createTask(req.user.id, req.body);
+    res.status(201).json(task);
+  } catch (err) {
+    console.error('[TASKS] Create error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/tasks/:taskId', requireAuth, async (req, res) => {
+  try {
+    const task = await taskStore.getTask(req.params.taskId, req.user.id);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    res.json(task);
+  } catch (err) {
+    console.error('[TASKS] Get error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/tasks/:taskId', requireAuth, async (req, res) => {
+  try {
+    const task = await taskStore.updateTask(req.params.taskId, req.user.id, req.body);
+    res.json(task);
+  } catch (err) {
+    console.error('[TASKS] Update error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/tasks/:taskId', requireAuth, async (req, res) => {
+  try {
+    await taskStore.deleteTask(req.params.taskId, req.user.id);
+    res.status(204).end();
+  } catch (err) {
+    console.error('[TASKS] Delete error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/tasks/:taskId/reorder', requireAuth, async (req, res) => {
+  try {
+    const { newStatus, newPosition } = req.body;
+    if (!newStatus || newPosition === undefined) {
+      return res.status(400).json({ error: 'newStatus and newPosition required' });
+    }
+    await taskStore.reorderTask(req.user.id, req.params.taskId, newStatus, newPosition);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[TASKS] Reorder error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Label assignments ---
+app.post('/api/tasks/:taskId/labels/:labelId', requireAuth, async (req, res) => {
+  try {
+    const assignment = await taskStore.assignLabel(req.params.taskId, req.params.labelId);
+    res.status(201).json(assignment);
+  } catch (err) {
+    console.error('[TASKS] Assign label error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/tasks/:taskId/labels/:labelId', requireAuth, async (req, res) => {
+  try {
+    await taskStore.removeLabel(req.params.taskId, req.params.labelId);
+    res.status(204).end();
+  } catch (err) {
+    console.error('[TASKS] Remove label error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==================== CHAT STREAMING ENDPOINT ====================
 app.post('/api/chat', requireAuth, async (req, res) => {
   const {
@@ -897,6 +1245,13 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       allowedTools.push(...BROWSER_TOOL_NAMES);
     }
 
+    // Build system prompt from user instructions
+    const systemPromptAppend = buildSystemPrompt();
+
+    // Read permission settings
+    const settingsData = readUserSettingsFile();
+    const permissions = settingsData.permissions || { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true };
+
     // Stream responses from the provider
     try {
       for await (const chunk of provider.query({
@@ -906,7 +1261,10 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         mcpServers,
         model,
         allowedTools,
-        maxTurns: 100
+        maxTurns: 100,
+        systemPromptAppend: systemPromptAppend || undefined,
+        permissionMode: permissions.mode || 'bypassPermissions',
+        allowedDirectories: permissions.allowedDirectories || []
       })) {
         // Accumulate text content
         if (chunk.type === 'text' && chunk.content) {
@@ -1006,6 +1364,39 @@ app.post('/api/abort', requireAuth, (req, res) => {
   }
 });
 
+// Permission response endpoint — resolves pending permission requests from the UI
+app.post('/api/permission-response', requireAuth, (req, res) => {
+  const { chatId, requestId, behavior, message: denyMessage } = req.body;
+
+  if (!chatId || !requestId || !behavior) {
+    return res.status(400).json({ error: 'chatId, requestId, and behavior are required' });
+  }
+
+  if (!['allow', 'deny'].includes(behavior)) {
+    return res.status(400).json({ error: 'behavior must be "allow" or "deny"' });
+  }
+
+  console.log('[PERMISSION] Response for', requestId, ':', behavior);
+
+  try {
+    const provider = getProvider('claude');
+    const decision = { behavior };
+    if (behavior === 'deny' && denyMessage) {
+      decision.message = denyMessage;
+    }
+    const resolved = provider.resolvePermission(chatId, requestId, decision);
+
+    if (resolved) {
+      res.json({ success: true });
+    } else {
+      res.json({ success: false, message: 'No pending permission request found' });
+    }
+  } catch (error) {
+    console.error('[PERMISSION] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get available providers endpoint
 app.get('/api/providers', (_req, res) => {
   res.json({
@@ -1027,7 +1418,9 @@ app.get('/api/settings', (_req, res) => {
         dataforseoPassword: maskKey(data.apiKeys.dataforseoPassword)
       },
       mcpServers: data.mcpServers,
-      browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 }
+      browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 },
+      instructions: data.instructions || { global: '', folders: [] },
+      permissions: data.permissions || { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true }
     });
   } catch (err) {
     console.error('[SETTINGS] GET error:', err);
@@ -1083,6 +1476,39 @@ app.put('/api/settings', (req, res) => {
       if (body.browser.cdpPort !== undefined) data.browser.cdpPort = parseInt(body.browser.cdpPort) || 9222;
     }
 
+    // Handle instructions
+    if (body.instructions && typeof body.instructions === 'object') {
+      if (!data.instructions) data.instructions = { global: '', folders: [] };
+      if (body.instructions.global !== undefined) {
+        data.instructions.global = String(body.instructions.global || '');
+      }
+      if (Array.isArray(body.instructions.folders)) {
+        data.instructions.folders = body.instructions.folders
+          .filter(f => f && typeof f === 'object' && f.path)
+          .map(f => ({
+            path: String(f.path).trim(),
+            instructions: String(f.instructions || '').trim()
+          }));
+      }
+    }
+
+    // Handle permissions
+    if (body.permissions && typeof body.permissions === 'object') {
+      if (!data.permissions) data.permissions = { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true };
+      if (body.permissions.mode !== undefined) {
+        const validModes = ['bypassPermissions', 'default', 'plan', 'acceptEdits'];
+        data.permissions.mode = validModes.includes(body.permissions.mode) ? body.permissions.mode : 'bypassPermissions';
+      }
+      if (Array.isArray(body.permissions.allowedDirectories)) {
+        data.permissions.allowedDirectories = body.permissions.allowedDirectories
+          .filter(d => typeof d === 'string' && d.trim())
+          .map(d => d.trim());
+      }
+      if (body.permissions.fileDeleteConfirmation !== undefined) {
+        data.permissions.fileDeleteConfirmation = !!body.permissions.fileDeleteConfirmation;
+      }
+    }
+
     saveUserSettings(data);
 
     // Re-initialize browser if browser settings changed
@@ -1121,7 +1547,9 @@ app.put('/api/settings', (req, res) => {
         dataforseoPassword: maskKey(data.apiKeys.dataforseoPassword)
       },
       mcpServers: data.mcpServers,
-      browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 }
+      browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 },
+      instructions: data.instructions || { global: '', folders: [] },
+      permissions: data.permissions || { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true }
     });
   } catch (err) {
     console.error('[SETTINGS] PUT error:', err);

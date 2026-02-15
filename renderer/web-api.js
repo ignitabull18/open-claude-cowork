@@ -122,6 +122,19 @@
       return await response.json();
     },
 
+    respondToPermission: async function (chatId, requestId, behavior, message) {
+      try {
+        const response = await fetch(apiUrl('/api/permission-response'), {
+          method: 'POST',
+          headers: buildHeaders(),
+          body: JSON.stringify({ chatId, requestId, behavior, message })
+        });
+        return await response.json();
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    },
+
     getDatabaseAccess: async function () {
       try {
         const response = await fetch(apiUrl('/api/database/access'), { headers: buildHeaders() });
@@ -275,6 +288,190 @@
       const response = await fetch(apiUrl('/api/jobs/' + jobId + '/run'), {
         method: 'POST', headers: buildHeaders()
       });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+
+    // ==================== TASKS ====================
+    getTasks: async function (opts) {
+      var qs = new URLSearchParams();
+      if (opts) {
+        if (opts.status) qs.set('status', opts.status);
+        if (opts.priority !== undefined) qs.set('priority', opts.priority);
+        if (opts.search) qs.set('search', opts.search);
+        if (opts.limit) qs.set('limit', opts.limit);
+      }
+      var qsStr = qs.toString();
+      var url = '/api/tasks' + (qsStr ? '?' + qsStr : '');
+      const response = await fetch(apiUrl(url), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getTask: async function (taskId) {
+      const response = await fetch(apiUrl('/api/tasks/' + taskId), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    createTask: async function (data) {
+      const response = await fetch(apiUrl('/api/tasks'), {
+        method: 'POST', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    updateTask: async function (taskId, data) {
+      const response = await fetch(apiUrl('/api/tasks/' + taskId), {
+        method: 'PUT', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    deleteTask: async function (taskId) {
+      const response = await fetch(apiUrl('/api/tasks/' + taskId), {
+        method: 'DELETE', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+    },
+    reorderTask: async function (taskId, newStatus, newPosition) {
+      const response = await fetch(apiUrl('/api/tasks/' + taskId + '/reorder'), {
+        method: 'PUT', headers: buildHeaders(), body: JSON.stringify({ newStatus: newStatus, newPosition: newPosition })
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getTasksCalendarRange: async function (start, end) {
+      const response = await fetch(apiUrl('/api/tasks/calendar/range?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end)), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getTasksBoard: async function () {
+      const response = await fetch(apiUrl('/api/tasks/board'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getTaskLabels: async function () {
+      const response = await fetch(apiUrl('/api/tasks/labels'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    createTaskLabel: async function (data) {
+      const response = await fetch(apiUrl('/api/tasks/labels'), {
+        method: 'POST', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    updateTaskLabel: async function (labelId, data) {
+      const response = await fetch(apiUrl('/api/tasks/labels/' + labelId), {
+        method: 'PUT', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    deleteTaskLabel: async function (labelId) {
+      const response = await fetch(apiUrl('/api/tasks/labels/' + labelId), {
+        method: 'DELETE', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+    },
+    assignTaskLabel: async function (taskId, labelId) {
+      const response = await fetch(apiUrl('/api/tasks/' + taskId + '/labels/' + labelId), {
+        method: 'POST', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    removeTaskLabel: async function (taskId, labelId) {
+      const response = await fetch(apiUrl('/api/tasks/' + taskId + '/labels/' + labelId), {
+        method: 'DELETE', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+    },
+
+    // ==================== VAULT ====================
+    getVaultFolders: async function (parentId) {
+      var url = '/api/vault/folders';
+      if (parentId) url += '?parentId=' + encodeURIComponent(parentId);
+      const response = await fetch(apiUrl(url), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    createVaultFolder: async function (name, parentId) {
+      const response = await fetch(apiUrl('/api/vault/folders'), {
+        method: 'POST', headers: buildHeaders(), body: JSON.stringify({ name: name, parentId: parentId })
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    updateVaultFolder: async function (folderId, data) {
+      const response = await fetch(apiUrl('/api/vault/folders/' + folderId), {
+        method: 'PATCH', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    deleteVaultFolder: async function (folderId) {
+      const response = await fetch(apiUrl('/api/vault/folders/' + folderId), {
+        method: 'DELETE', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getVaultBreadcrumbs: async function (folderId) {
+      const response = await fetch(apiUrl('/api/vault/folders/' + folderId + '/breadcrumbs'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getVaultAssets: async function (opts) {
+      var qs = new URLSearchParams();
+      if (opts) {
+        if (opts.folderId) qs.set('folderId', opts.folderId);
+        if (opts.sort) qs.set('sort', opts.sort);
+        if (opts.dir) qs.set('dir', opts.dir);
+        if (opts.source) qs.set('source', opts.source);
+        if (opts.limit) qs.set('limit', opts.limit);
+        if (opts.offset) qs.set('offset', opts.offset);
+      }
+      var qsStr = qs.toString();
+      var url = '/api/vault/assets' + (qsStr ? '?' + qsStr : '');
+      const response = await fetch(apiUrl(url), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    uploadVaultAsset: async function (file, folderId, source) {
+      var formData = new FormData();
+      formData.append('file', file);
+      if (folderId) formData.append('folderId', folderId);
+      if (source) formData.append('source', source);
+      var headers = {};
+      if (window._authToken) headers['Authorization'] = 'Bearer ' + window._authToken;
+      const response = await fetch(apiUrl('/api/vault/assets/upload'), {
+        method: 'POST', headers: headers, body: formData
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    updateVaultAsset: async function (assetId, data) {
+      const response = await fetch(apiUrl('/api/vault/assets/' + assetId), {
+        method: 'PATCH', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    deleteVaultAsset: async function (assetId) {
+      const response = await fetch(apiUrl('/api/vault/assets/' + assetId), {
+        method: 'DELETE', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getVaultAssetUrl: async function (assetId) {
+      const response = await fetch(apiUrl('/api/vault/assets/' + assetId + '/url'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getVaultStats: async function () {
+      const response = await fetch(apiUrl('/api/vault/stats'), { headers: buildHeaders() });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return await response.json();
     }

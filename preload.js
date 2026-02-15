@@ -314,5 +314,92 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
     if (!response.ok) throw new Error('HTTP ' + response.status);
     return await response.json();
+  },
+
+  // ==================== VAULT ====================
+  getVaultFolders: async (parentId) => {
+    const url = parentId
+      ? `${SERVER_URL}/api/vault/folders?parentId=${encodeURIComponent(parentId)}`
+      : `${SERVER_URL}/api/vault/folders`;
+    const response = await fetch(url, { headers: buildHeaders() });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  createVaultFolder: async (name, parentId) => {
+    const response = await fetch(`${SERVER_URL}/api/vault/folders`, {
+      method: 'POST', headers: buildHeaders(), body: JSON.stringify({ name, parentId })
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  updateVaultFolder: async (folderId, data) => {
+    const response = await fetch(`${SERVER_URL}/api/vault/folders/${folderId}`, {
+      method: 'PATCH', headers: buildHeaders(), body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  deleteVaultFolder: async (folderId) => {
+    const response = await fetch(`${SERVER_URL}/api/vault/folders/${folderId}`, {
+      method: 'DELETE', headers: buildHeaders()
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  getVaultBreadcrumbs: async (folderId) => {
+    const response = await fetch(`${SERVER_URL}/api/vault/folders/${folderId}/breadcrumbs`, { headers: buildHeaders() });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  getVaultAssets: async (opts = {}) => {
+    const qs = new URLSearchParams();
+    if (opts.folderId) qs.set('folderId', opts.folderId);
+    if (opts.sort) qs.set('sort', opts.sort);
+    if (opts.dir) qs.set('dir', opts.dir);
+    if (opts.source) qs.set('source', opts.source);
+    if (opts.limit) qs.set('limit', opts.limit);
+    if (opts.offset) qs.set('offset', opts.offset);
+    const qsStr = qs.toString();
+    const url = `${SERVER_URL}/api/vault/assets${qsStr ? '?' + qsStr : ''}`;
+    const response = await fetch(url, { headers: buildHeaders() });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  uploadVaultAsset: async (file, folderId, source) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (folderId) formData.append('folderId', folderId);
+    if (source) formData.append('source', source);
+    const headers = {};
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    const response = await fetch(`${SERVER_URL}/api/vault/assets/upload`, {
+      method: 'POST', headers, body: formData
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  updateVaultAsset: async (assetId, data) => {
+    const response = await fetch(`${SERVER_URL}/api/vault/assets/${assetId}`, {
+      method: 'PATCH', headers: buildHeaders(), body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  deleteVaultAsset: async (assetId) => {
+    const response = await fetch(`${SERVER_URL}/api/vault/assets/${assetId}`, {
+      method: 'DELETE', headers: buildHeaders()
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  getVaultAssetUrl: async (assetId) => {
+    const response = await fetch(`${SERVER_URL}/api/vault/assets/${assetId}/url`, { headers: buildHeaders() });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  getVaultStats: async () => {
+    const response = await fetch(`${SERVER_URL}/api/vault/stats`, { headers: buildHeaders() });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
   }
 });

@@ -66,6 +66,21 @@
           </svg>
           <span>Jobs</span>
         </button>
+        <button type="button" class="sidebar-footer-btn" id="tasksSidebarBtn" title="Tasks">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="8" y1="9" x2="16" y2="9"></line>
+            <line x1="8" y1="13" x2="14" y2="13"></line>
+            <line x1="8" y1="17" x2="12" y2="17"></line>
+          </svg>
+          <span>Tasks</span>
+        </button>
+        <button type="button" class="vault-sidebar-btn" id="vaultSidebarBtn" title="Assets Vault">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Vault</span>
+        </button>
         <button type="button" class="db-sidebar-btn hidden" id="dbSidebarBtn" title="Database">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
@@ -362,7 +377,10 @@
       <!-- Right Sidebar -->
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-          <h3>Progress</h3>
+          <div class="sidebar-tabs" id="sidebarTabs">
+            <button class="sidebar-tab active" data-tab="progress" id="tabProgress">Progress</button>
+            <button class="sidebar-tab" data-tab="artifact" id="tabArtifact" disabled>Artifact</button>
+          </div>
           <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="9 18 15 12 9 6"></polyline>
@@ -370,35 +388,97 @@
           </button>
         </div>
 
-        <!-- Steps/Todos Section -->
-        <div class="sidebar-section">
-          <div class="section-header" id="stepsHeader">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-            <span id="stepsCount">0 steps</span>
+        <!-- Progress Panel -->
+        <div class="sidebar-panel active" id="progressPanel">
+          <!-- Steps/Todos Section -->
+          <div class="sidebar-section">
+            <div class="section-header" id="stepsHeader">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+              <span id="stepsCount">0 steps</span>
+            </div>
+            <div class="steps-list" id="stepsList">
+              <div class="empty-state" id="emptySteps">No active tasks</div>
+            </div>
           </div>
-          <div class="steps-list" id="stepsList">
-            <!-- Steps will be added here -->
-            <div class="empty-state" id="emptySteps">No active tasks</div>
+
+          <!-- Tool Calls Section -->
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+              </svg>
+              <span>Tool Calls</span>
+            </div>
+            <div class="tool-calls-list" id="toolCallsList">
+              <div class="empty-state" id="emptyTools">No tool calls yet</div>
+            </div>
           </div>
         </div>
 
-        <!-- Tool Calls Section -->
-        <div class="sidebar-section">
-          <div class="section-header">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-            </svg>
-            <span>Tool Calls</span>
+        <!-- Artifact Panel -->
+        <div class="sidebar-panel" id="artifactPanel">
+          <div class="artifact-header">
+            <div class="artifact-title-row">
+              <span class="artifact-lang-badge" id="artifactLangBadge"></span>
+              <span class="artifact-title" id="artifactTitle">Untitled</span>
+            </div>
+            <div class="artifact-version-info" id="artifactVersionInfo">v1</div>
           </div>
-          <div class="tool-calls-list" id="toolCallsList">
-            <!-- Tool calls will be added here -->
-            <div class="empty-state" id="emptyTools">No tool calls yet</div>
+
+          <!-- Code Editor -->
+          <div class="code-editor-wrap" id="codeEditorWrap" style="display:none">
+            <div class="line-numbers" id="lineNumbers"></div>
+            <textarea class="code-editor" id="codeEditor" spellcheck="false"></textarea>
+          </div>
+
+          <!-- Document Editor -->
+          <div class="doc-editor-wrap" id="docEditorWrap" style="display:none">
+            <div class="doc-toolbar" id="docToolbar">
+              <button data-cmd="bold" title="Bold"><b>B</b></button>
+              <button data-cmd="italic" title="Italic"><i>I</i></button>
+              <button data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+              <span class="doc-toolbar-sep"></span>
+              <button data-cmd="formatBlock" data-val="H1" title="Heading 1">H1</button>
+              <button data-cmd="formatBlock" data-val="H2" title="Heading 2">H2</button>
+              <span class="doc-toolbar-sep"></span>
+              <button data-cmd="insertUnorderedList" title="Bullet list">&bull;</button>
+              <button data-cmd="insertOrderedList" title="Numbered list">1.</button>
+            </div>
+            <div class="doc-editor" id="docEditor" contenteditable="true"></div>
+          </div>
+
+          <!-- Artifact Actions -->
+          <div class="artifact-actions" id="artifactActions">
+            <button class="artifact-action-btn" id="artifactCopyBtn" title="Copy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span>Copy</span>
+            </button>
+            <button class="artifact-action-btn" id="artifactDownloadBtn" title="Download">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Download</span>
+            </button>
+            <div class="artifact-version-btns">
+              <button class="artifact-action-btn" id="artifactUndoBtn" title="Undo" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+              </button>
+              <button class="artifact-action-btn" id="artifactRedoBtn" title="Redo" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
+              </button>
+            </div>
           </div>
         </div>
 
       </aside>
+
+      <!-- Selection Floating Toolbar -->
+      <div class="selection-toolbar" id="selectionToolbar" style="display:none">
+        <button data-action="explain">Explain</button>
+        <button data-action="improve">Improve</button>
+        <button data-action="fix">Fix</button>
+        <button data-action="ask">Ask...</button>
+      </div>
     </div>
 
       <!-- Settings View -->
@@ -543,6 +623,74 @@
             </div>
             <button type="button" class="settings-save-btn" id="settingsSaveBrowserBtn">Save browser settings</button>
             <p class="settings-status" id="settingsBrowserStatus"></p>
+          </section>
+
+          <!-- Instructions Section -->
+          <section class="settings-section">
+            <h3>Instructions</h3>
+            <p class="settings-hint">Standing instructions appended to every chat message. Global instructions apply always; folder instructions apply when relevant.</p>
+
+            <div class="settings-field">
+              <label for="settingsGlobalInstructions">Global instructions</label>
+              <textarea id="settingsGlobalInstructions" class="settings-textarea" rows="4" placeholder="e.g. Always respond professionally. Prefer TypeScript over JavaScript."></textarea>
+            </div>
+
+            <h4 style="margin-top:1rem;">Folder instructions</h4>
+            <div id="settingsFolderInstructionsList"></div>
+            <button type="button" class="settings-add-btn" id="settingsAddFolderInstructionBtn">+ Add folder instruction</button>
+
+            <!-- Folder instruction form (hidden by default) -->
+            <div class="settings-mcp-form hidden" id="settingsFolderInstructionForm">
+              <div class="settings-field">
+                <label for="settingsFolderPath">Folder path</label>
+                <input type="text" id="settingsFolderPath" class="settings-input" placeholder="/Users/.../my-project" />
+              </div>
+              <div class="settings-field">
+                <label for="settingsFolderInstructionsText">Instructions for this folder</label>
+                <textarea id="settingsFolderInstructionsText" class="settings-textarea" rows="3" placeholder="e.g. React app using Tailwind CSS. Use functional components."></textarea>
+              </div>
+              <div class="settings-mcp-form-actions">
+                <button type="button" class="settings-save-btn" id="settingsFolderInstructionSaveBtn">Save</button>
+                <button type="button" class="settings-cancel-btn" id="settingsFolderInstructionCancelBtn">Cancel</button>
+              </div>
+            </div>
+
+            <button type="button" class="settings-save-btn" id="settingsSaveInstructionsBtn" style="margin-top:1rem;">Save instructions</button>
+            <p class="settings-status" id="settingsInstructionsStatus"></p>
+          </section>
+
+          <!-- Permissions -->
+          <section class="settings-section">
+            <h3>Permissions</h3>
+            <p class="settings-hint">Control how Claude asks for permission before using tools. "Full auto" skips all prompts; "Supervised" asks before file writes and destructive operations; "Strict" asks before every tool call; "Plan only" lets Claude plan but not act.</p>
+
+            <div class="settings-field">
+              <label for="settingsPermissionMode">Permission mode</label>
+              <select id="settingsPermissionMode" class="settings-input">
+                <option value="bypassPermissions">Full auto (bypass all)</option>
+                <option value="acceptEdits">Supervised (auto-approve reads)</option>
+                <option value="default">Strict (ask for everything)</option>
+                <option value="plan">Plan only (no execution)</option>
+              </select>
+            </div>
+
+            <h4 style="margin-top:1rem;">Allowed directories</h4>
+            <p class="settings-hint">Directories where tool operations are always allowed without prompting.</p>
+            <div id="settingsAllowedDirectoriesList"></div>
+            <div class="settings-mcp-form" id="settingsAddDirectoryForm" style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
+              <input type="text" id="settingsNewDirectoryPath" class="settings-input" placeholder="/Users/.../my-project" style="flex:1;" />
+              <button type="button" class="settings-add-btn" id="settingsAddDirectoryBtn">+ Add</button>
+            </div>
+
+            <div class="settings-field" style="margin-top:1rem;">
+              <label class="settings-checkbox-label">
+                <input type="checkbox" id="settingsFileDeleteConfirmation" checked />
+                Always confirm before deleting files
+              </label>
+            </div>
+
+            <button type="button" class="settings-save-btn" id="settingsSavePermissionsBtn" style="margin-top:1rem;">Save permissions</button>
+            <p class="settings-status" id="settingsPermissionsStatus"></p>
           </section>
         </div>
       </div>
@@ -882,6 +1030,154 @@
           </div>
         </div>
       </div>
+
+      <!-- ==================== VAULT VIEW ==================== -->
+      <div class="vault-view hidden" id="vaultView">
+        <header class="vault-header">
+          <button type="button" class="vault-back-btn" id="vaultBackBtn" title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <h1 class="vault-title">Assets Vault</h1>
+          <button type="button" class="vault-action-btn" id="vaultNewFolderBtn">New Folder</button>
+          <button type="button" class="vault-action-btn vault-upload-btn" id="vaultUploadBtn">Upload</button>
+          <input type="file" id="vaultFileInput" multiple hidden />
+        </header>
+        <nav class="vault-breadcrumbs" id="vaultBreadcrumbs">
+          <span class="vault-crumb vault-crumb-root" data-id="">Downloads</span>
+        </nav>
+        <div class="vault-toolbar">
+          <select class="vault-filter-select" id="vaultSourceFilter">
+            <option value="">All Sources</option>
+            <option value="upload">Uploads</option>
+            <option value="chat">Chat</option>
+            <option value="ai_generated">AI Generated</option>
+          </select>
+          <select class="vault-sort-select" id="vaultSortSelect">
+            <option value="created_at:desc">Newest</option>
+            <option value="created_at:asc">Oldest</option>
+            <option value="file_name:asc">Name A-Z</option>
+            <option value="file_name:desc">Name Z-A</option>
+            <option value="file_size:desc">Largest</option>
+            <option value="file_size:asc">Smallest</option>
+          </select>
+          <button type="button" class="vault-view-toggle" id="vaultViewToggle" title="Toggle view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+            </svg>
+          </button>
+        </div>
+        <div class="vault-content" id="vaultContent">
+          <div class="vault-unavailable hidden" id="vaultUnavailable">
+            <p>Connect Supabase to use Assets Vault</p>
+          </div>
+          <div class="vault-grid" id="vaultGrid"></div>
+          <div class="vault-empty hidden" id="vaultEmpty">No files yet. Upload a file or create a folder to get started.</div>
+        </div>
+      </div>
+
+      <!-- ==================== TASKS VIEW ==================== -->
+      <div id="tasksView" class="tasks-view hidden">
+        <div class="tasks-header">
+          <h2 class="tasks-title">Tasks</h2>
+          <div class="tasks-view-switcher">
+            <button class="tasks-view-tab active" data-view="kanban">Kanban</button>
+            <button class="tasks-view-tab" data-view="calendar">Calendar</button>
+            <button class="tasks-view-tab" data-view="list">List</button>
+          </div>
+          <button class="tasks-new-btn" id="tasksNewBtn">+ New Task</button>
+        </div>
+
+        <div class="tasks-filter-bar">
+          <select class="tasks-filter-select" id="tasksFilterStatus">
+            <option value="">All Statuses</option>
+            <option value="backlog">Backlog</option>
+            <option value="todo">To Do</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <select class="tasks-filter-select" id="tasksFilterPriority">
+            <option value="">All Priorities</option>
+            <option value="1">Urgent</option>
+            <option value="2">High</option>
+            <option value="3">Normal</option>
+            <option value="4">Low</option>
+          </select>
+          <select class="tasks-filter-select" id="tasksFilterLabel">
+            <option value="">All Labels</option>
+          </select>
+          <input type="text" class="tasks-filter-search" id="tasksFilterSearch" placeholder="Search tasks...">
+        </div>
+
+        <div id="tasksKanbanView" class="tasks-kanban"></div>
+        <div id="tasksCalendarView" class="tasks-calendar hidden"></div>
+        <div id="tasksListView" class="tasks-list hidden"></div>
+
+        <!-- Task Modal -->
+        <div class="tasks-modal-overlay hidden" id="taskModal">
+          <div class="tasks-modal">
+            <div class="tasks-modal-header">
+              <h3 id="taskModalTitle">New Task</h3>
+              <button class="tasks-modal-close" id="taskModalClose">&times;</button>
+            </div>
+            <div class="tasks-modal-body">
+              <input type="hidden" id="taskModalId">
+              <div class="tasks-modal-field">
+                <label>Title</label>
+                <input type="text" id="taskModalTitleInput" placeholder="Task title..." required>
+              </div>
+              <div class="tasks-modal-field">
+                <label>Description</label>
+                <textarea id="taskModalDesc" rows="3" placeholder="Optional description..."></textarea>
+              </div>
+              <div class="tasks-modal-row">
+                <div class="tasks-modal-field">
+                  <label>Status</label>
+                  <select id="taskModalStatus">
+                    <option value="backlog">Backlog</option>
+                    <option value="todo" selected>To Do</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="done">Done</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div class="tasks-modal-field">
+                  <label>Priority</label>
+                  <select id="taskModalPriority">
+                    <option value="1">Urgent</option>
+                    <option value="2">High</option>
+                    <option value="3" selected>Normal</option>
+                    <option value="4">Low</option>
+                  </select>
+                </div>
+              </div>
+              <div class="tasks-modal-row">
+                <div class="tasks-modal-field">
+                  <label>Due Date</label>
+                  <input type="datetime-local" id="taskModalDue">
+                </div>
+                <div class="tasks-modal-field">
+                  <label>Labels</label>
+                  <div class="tasks-modal-labels" id="taskModalLabels"></div>
+                </div>
+              </div>
+            </div>
+            <div class="tasks-modal-footer">
+              <button class="tasks-modal-delete hidden" id="taskModalDeleteBtn">Delete</button>
+              <div class="tasks-modal-actions">
+                <button class="tasks-modal-cancel" id="taskModalCancelBtn">Cancel</button>
+                <button class="tasks-modal-save" id="taskModalSaveBtn">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- end main-content -->
 
     <!-- Right Sidebar Expand Button (visible when collapsed) -->
@@ -892,7 +1188,30 @@
     </button>
   </div>
 
+  <!-- Permission Dialog Overlay -->
+  <div class="permission-dialog-overlay hidden" id="permissionDialogOverlay">
+    <div class="permission-dialog">
+      <h3 class="permission-dialog-title">Permission Required</h3>
+      <p class="permission-dialog-desc">Claude wants to use a tool that requires your approval.</p>
+      <div class="permission-dialog-details">
+        <div class="permission-dialog-field">
+          <span class="permission-dialog-label">Tool:</span>
+          <span class="permission-dialog-value" id="permissionToolName"></span>
+        </div>
+        <div class="permission-dialog-field">
+          <span class="permission-dialog-label">Input:</span>
+          <pre class="permission-dialog-input" id="permissionToolInput"></pre>
+        </div>
+      </div>
+      <div class="permission-dialog-actions">
+        <button type="button" class="permission-allow-btn" id="permissionAllowBtn">Allow</button>
+        <button type="button" class="permission-deny-btn" id="permissionDenyBtn">Deny</button>
+      </div>
+    </div>
+  </div>
+
   <script src="db-explorer.js"></script>
+  <script src="tasks.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>
