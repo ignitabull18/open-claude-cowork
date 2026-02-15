@@ -2616,6 +2616,9 @@ function initReportsView() {
     reportsInitialized = true;
     setupReportsEventListeners();
   }
+  // Show unavailable message when not authenticated
+  const unavailable = document.getElementById('reportsUnavailable');
+  if (unavailable) unavailable.classList.toggle('hidden', useApi());
   showReportsListView();
 }
 
@@ -2826,14 +2829,14 @@ function renderReportChart(canvas, chartType, data) {
     tension: 0.3
   }));
 
-  const mappedType = chartType === 'horizontal_bar' ? 'bar' : chartType;
+  const mappedType = chartType === 'horizontalBar' ? 'bar' : chartType;
   const chart = new window.Chart(canvas.getContext('2d'), {
     type: mappedType,
     data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      indexAxis: chartType === 'horizontal_bar' ? 'y' : 'x',
+      indexAxis: chartType === 'horizontalBar' ? 'y' : 'x',
       plugins: { legend: { display: valueKeys.length > 1 || chartType === 'doughnut' } },
       scales: chartType === 'doughnut' ? {} : {
         y: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.06)' } },
@@ -2974,34 +2977,38 @@ function initJobsView() {
     jobsInitialized = true;
     setupJobsEventListeners();
   }
+  // Show unavailable message when not authenticated
+  const unavailable = document.getElementById('jobsUnavailable');
+  if (unavailable) unavailable.classList.toggle('hidden', useApi());
   loadJobs();
 }
 
 function setupJobsEventListeners() {
-  const newJobBtn = document.getElementById('newJobBtn');
+  const newJobBtn = document.getElementById('jobsNewBtn');
   if (newJobBtn) newJobBtn.addEventListener('click', () => openJobForm(null));
 
-  const jobFormCancel = document.getElementById('jobFormCancelBtn');
+  const jobFormCancel = document.getElementById('jobCancelBtn');
   if (jobFormCancel) jobFormCancel.addEventListener('click', () => hideJobForm());
 
-  const jobFormSave = document.getElementById('jobFormSaveBtn');
+  const jobFormSave = document.getElementById('jobSaveBtn');
   if (jobFormSave) jobFormSave.addEventListener('click', () => saveJob());
 
-  const jobTypeSelect = document.getElementById('jobTypeSelect');
+  const jobTypeSelect = document.getElementById('jobType');
   if (jobTypeSelect) jobTypeSelect.addEventListener('change', () => {
     const val = jobTypeSelect.value;
-    document.getElementById('jobOneTimeFields')?.classList.toggle('hidden', val !== 'one_time');
-    document.getElementById('jobRecurringFields')?.classList.toggle('hidden', val !== 'recurring');
-    document.getElementById('jobCronFields')?.classList.toggle('hidden', val !== 'cron');
+    document.getElementById('jobExecuteAtField')?.classList.toggle('hidden', val !== 'one_time');
+    document.getElementById('jobIntervalField')?.classList.toggle('hidden', val !== 'recurring');
+    document.getElementById('jobCronField')?.classList.toggle('hidden', val !== 'cron');
   });
 
   const actionTypeSelect = document.getElementById('jobActionType');
   if (actionTypeSelect) actionTypeSelect.addEventListener('change', () => {
     const val = actionTypeSelect.value;
-    document.getElementById('actionChatFields')?.classList.toggle('hidden', val !== 'chat_message');
-    document.getElementById('actionReportFields')?.classList.toggle('hidden', val !== 'report_generation');
-    document.getElementById('actionExportFields')?.classList.toggle('hidden', val !== 'data_export');
-    document.getElementById('actionWebhookFields')?.classList.toggle('hidden', val !== 'webhook');
+    document.getElementById('jobReportField')?.classList.toggle('hidden', val !== 'report_generation');
+    document.getElementById('jobExportSourceField')?.classList.toggle('hidden', val !== 'data_export');
+    document.getElementById('jobExportFormatField')?.classList.toggle('hidden', val !== 'data_export');
+    document.getElementById('jobWebhookUrlField')?.classList.toggle('hidden', val !== 'webhook');
+    document.getElementById('jobWebhookMethodField')?.classList.toggle('hidden', val !== 'webhook');
   });
 }
 
@@ -3013,30 +3020,26 @@ function openJobForm(job) {
   editingJobId = job ? job.id : null;
   if (formTitle) formTitle.textContent = job ? 'Edit Job' : 'New Job';
 
-  document.getElementById('jobNameInput').value = job ? job.name : '';
-  document.getElementById('jobDescInput').value = job ? (job.description || '') : '';
-  document.getElementById('jobTypeSelect').value = job ? job.job_type : 'one_time';
-  document.getElementById('jobTypeSelect').dispatchEvent(new Event('change'));
-  document.getElementById('jobActionType').value = job ? job.action_type : 'chat_message';
+  document.getElementById('jobName').value = job ? job.name : '';
+  document.getElementById('jobDescription').value = job ? (job.description || '') : '';
+  document.getElementById('jobType').value = job ? job.job_type : 'one_time';
+  document.getElementById('jobType').dispatchEvent(new Event('change'));
+  document.getElementById('jobActionType').value = job ? job.action_type : 'report_generation';
   document.getElementById('jobActionType').dispatchEvent(new Event('change'));
 
   if (job) {
     if (job.execute_at) document.getElementById('jobExecuteAt').value = job.execute_at.slice(0, 16);
-    if (job.interval_seconds) document.getElementById('jobIntervalSeconds').value = job.interval_seconds;
-    if (job.cron_expression) document.getElementById('jobCronExpression').value = job.cron_expression;
+    if (job.interval_seconds) document.getElementById('jobInterval').value = job.interval_seconds;
+    if (job.cron_expression) document.getElementById('jobCron').value = job.cron_expression;
     const cfg = job.action_config || {};
-    if (job.action_type === 'chat_message') {
-      document.getElementById('jobChatMessage').value = cfg.message || '';
-      document.getElementById('jobChatProvider').value = cfg.provider || 'claude';
-    } else if (job.action_type === 'report_generation') {
-      document.getElementById('jobReportSelect').value = cfg.reportId || '';
+    if (job.action_type === 'report_generation') {
+      document.getElementById('jobReportId').value = cfg.reportId || '';
     } else if (job.action_type === 'data_export') {
       document.getElementById('jobExportSource').value = cfg.source || 'messages';
       document.getElementById('jobExportFormat').value = cfg.format || 'csv';
     } else if (job.action_type === 'webhook') {
       document.getElementById('jobWebhookUrl').value = cfg.url || '';
       document.getElementById('jobWebhookMethod').value = cfg.method || 'POST';
-      document.getElementById('jobWebhookBody').value = cfg.body || '';
     }
   }
   loadSavedReportsForJobForm();
@@ -3044,7 +3047,7 @@ function openJobForm(job) {
 
 async function loadSavedReportsForJobForm() {
   if (!useApi()) return;
-  const select = document.getElementById('jobReportSelect');
+  const select = document.getElementById('jobReportId');
   if (!select) return;
   try {
     const reports = await window.electronAPI.getSavedReports();
@@ -3077,35 +3080,33 @@ function hideJobForm() {
 
 async function saveJob() {
   if (!useApi()) return;
-  const name = document.getElementById('jobNameInput')?.value?.trim();
+  const name = document.getElementById('jobName')?.value?.trim();
   if (!name) { alert('Please enter a job name'); return; }
 
-  const jobType = document.getElementById('jobTypeSelect')?.value;
+  const jobType = document.getElementById('jobType')?.value;
   const actionType = document.getElementById('jobActionType')?.value;
 
   const jobData = {
     name,
-    description: document.getElementById('jobDescInput')?.value || '',
+    description: document.getElementById('jobDescription')?.value || '',
     job_type: jobType,
     action_type: actionType,
     action_config: {}
   };
 
   if (jobType === 'one_time') jobData.execute_at = document.getElementById('jobExecuteAt')?.value;
-  if (jobType === 'recurring') jobData.interval_seconds = parseInt(document.getElementById('jobIntervalSeconds')?.value) || 3600;
-  if (jobType === 'cron') jobData.cron_expression = document.getElementById('jobCronExpression')?.value;
+  if (jobType === 'recurring') jobData.interval_seconds = parseInt(document.getElementById('jobInterval')?.value) || 3600;
+  if (jobType === 'cron') jobData.cron_expression = document.getElementById('jobCron')?.value;
 
-  if (actionType === 'chat_message') {
-    jobData.action_config = { message: document.getElementById('jobChatMessage')?.value, provider: document.getElementById('jobChatProvider')?.value || 'claude' };
-  } else if (actionType === 'report_generation') {
-    jobData.action_config = { reportId: document.getElementById('jobReportSelect')?.value };
+  if (actionType === 'report_generation') {
+    jobData.action_config = { reportId: document.getElementById('jobReportId')?.value };
   } else if (actionType === 'data_export') {
     jobData.action_config = { source: document.getElementById('jobExportSource')?.value, format: document.getElementById('jobExportFormat')?.value };
   } else if (actionType === 'webhook') {
-    jobData.action_config = { url: document.getElementById('jobWebhookUrl')?.value, method: document.getElementById('jobWebhookMethod')?.value, body: document.getElementById('jobWebhookBody')?.value };
+    jobData.action_config = { url: document.getElementById('jobWebhookUrl')?.value, method: document.getElementById('jobWebhookMethod')?.value };
   }
 
-  const saveBtn = document.getElementById('jobFormSaveBtn');
+  const saveBtn = document.getElementById('jobSaveBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
   try {
     if (editingJobId) {
@@ -3221,7 +3222,9 @@ async function loadJobs() {
       container.appendChild(card);
     });
   } catch (err) {
-    container.textContent = 'Connect Supabase to use scheduled jobs.';
+    container.textContent = '';
+    const unavailable = document.getElementById('jobsUnavailable');
+    if (unavailable) unavailable.classList.remove('hidden');
   }
 }
 
