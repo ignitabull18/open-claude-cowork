@@ -15,7 +15,7 @@
 
       if (!config.supabaseUrl || !config.supabaseAnonKey) {
         console.log('[AUTH] Supabase not configured — skipping auth');
-        if (onReady) onReady(null);
+        if (onReady) onReady(null, { skipped: true });
         return;
       }
 
