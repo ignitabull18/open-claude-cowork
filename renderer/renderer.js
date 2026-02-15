@@ -682,6 +682,7 @@ function loadChat(chat) {
 // Render messages into the chat container
 function renderChatMessages(messages) {
   chatMessages.textContent = '';
+  const injectedArtifactIds = new Set();
   messages.forEach(msgData => {
     const messageDiv = document.createElement('div');
     messageDiv.className = msgData.class;
@@ -723,7 +724,10 @@ function renderChatMessages(messages) {
         a.versions[0] && contentDiv.dataset.rawContent.includes(a.versions[0])
       );
       if (restoredArts.length) {
-        restoredArts.forEach(art => injectArtifactPill(contentDiv, art));
+        restoredArts.forEach(art => {
+          injectedArtifactIds.add(art.id);
+          injectArtifactPill(contentDiv, art);
+        });
       } else {
         // No restored artifacts — detect fresh ones
         const arts = detectArtifacts(contentDiv.dataset.rawContent);
@@ -731,13 +735,25 @@ function renderChatMessages(messages) {
           artifactStore.set(art.id, {
             id: art.id, type: art.type, language: art.language,
             title: art.title, versions: [art.content], currentVersion: 0,
-            messageId: messageDiv.dataset?.messageId || null
+            messageId: null
           });
+          injectedArtifactIds.add(art.id);
           injectArtifactPill(contentDiv, art);
         });
       }
     }
   });
+
+  // Inject pills for tool-call-based artifacts not matched to rawContent
+  // (e.g. Write/Edit tool artifacts whose content isn't in markdown)
+  const unmatchedArts = [...artifactStore.values()].filter(a => !injectedArtifactIds.has(a.id));
+  if (unmatchedArts.length) {
+    const lastAssistant = chatMessages.querySelector('.message.assistant:last-of-type .message-content');
+    if (lastAssistant) {
+      unmatchedArts.forEach(art => injectArtifactPill(lastAssistant, art));
+    }
+  }
+
   scrollToBottom();
 }
 
@@ -856,6 +872,7 @@ async function loadSettings() {
     hideSettingsMcpForm();
     renderBrowserSettings(data.browser);
     renderInstructions(data.instructions);
+    renderPermissions(data.permissions);
   } catch (err) {
     if (settingsKeysStatus) {
       settingsKeysStatus.textContent = err.message && err.message.includes('404')
@@ -1056,6 +1073,10 @@ async function saveBrowserSettings() {
 let folderInstructionsData = []; // local copy for CRUD
 let editingFolderIndex = -1;     // -1 = adding new, >=0 = editing existing
 
+// Permission state
+let allowedDirectoriesData = [];
+let pendingPermissionRequest = null; // { chatId, requestId }
+
 function renderInstructions(instructions) {
   const inst = instructions || { global: '', folders: [] };
   if (settingsGlobalInstructions) settingsGlobalInstructions.value = inst.global || '';
@@ -1173,6 +1194,79 @@ async function saveInstructions() {
   }
 }
 
+// ---- Permission Settings ----
+function renderPermissions(permissions) {
+  const perms = permissions || { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true };
+  if (settingsPermissionMode) settingsPermissionMode.value = perms.mode || 'bypassPermissions';
+  if (settingsFileDeleteConfirmation) settingsFileDeleteConfirmation.checked = perms.fileDeleteConfirmation !== false;
+  allowedDirectoriesData = Array.isArray(perms.allowedDirectories) ? perms.allowedDirectories.slice() : [];
+  renderAllowedDirectoriesList();
+  if (settingsPermissionsStatus) settingsPermissionsStatus.textContent = '';
+}
+function renderAllowedDirectoriesList() {
+  if (!settingsAllowedDirectoriesList) return;
+  settingsAllowedDirectoriesList.textContent = '';
+  if (allowedDirectoriesData.length === 0) {
+    const p = document.createElement('p');
+    p.style.cssText = 'color:var(--text-muted);font-size:13px;';
+    p.textContent = 'No allowed directories configured.';
+    settingsAllowedDirectoriesList.appendChild(p);
+    return;
+  }
+  allowedDirectoriesData.forEach((dir, i) => {
+    const item = document.createElement('div');
+    item.className = 'mcp-server-item';
+    item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;';
+    const pathEl = document.createElement('span');
+    pathEl.style.cssText = 'font-size:13px;font-family:var(--font-mono);word-break:break-all;';
+    pathEl.textContent = dir;
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'settings-btn';
+    removeBtn.style.cssText = 'padding:2px 8px;font-size:12px;color:var(--error);flex-shrink:0;margin-left:8px;';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', () => { allowedDirectoriesData.splice(i, 1); renderAllowedDirectoriesList(); });
+    item.appendChild(pathEl);
+    item.appendChild(removeBtn);
+    settingsAllowedDirectoriesList.appendChild(item);
+  });
+}
+function addAllowedDirectory() {
+  if (!settingsNewDirectoryPath) return;
+  const dir = settingsNewDirectoryPath.value.trim();
+  if (!dir) return;
+  if (allowedDirectoriesData.includes(dir)) { settingsNewDirectoryPath.value = ''; return; }
+  allowedDirectoriesData.push(dir);
+  settingsNewDirectoryPath.value = '';
+  renderAllowedDirectoriesList();
+}
+async function savePermissions() {
+  if (!window.electronAPI || typeof window.electronAPI.updateSettings !== 'function') return;
+  const body = { permissions: { mode: settingsPermissionMode ? settingsPermissionMode.value : 'bypassPermissions', allowedDirectories: allowedDirectoriesData, fileDeleteConfirmation: settingsFileDeleteConfirmation ? settingsFileDeleteConfirmation.checked : true } };
+  try {
+    const data = await window.electronAPI.updateSettings(body);
+    cachedSettings.permissions = data.permissions;
+    if (settingsPermissionsStatus) { settingsPermissionsStatus.textContent = 'Saved.'; settingsPermissionsStatus.classList.remove('error'); }
+  } catch (err) {
+    if (settingsPermissionsStatus) { settingsPermissionsStatus.textContent = err.message || 'Save failed'; settingsPermissionsStatus.classList.add('error'); }
+  }
+}
+function showPermissionDialog(chatId, requestId, toolName, toolInput) {
+  pendingPermissionRequest = { chatId, requestId };
+  if (permissionToolName) permissionToolName.textContent = toolName || 'Unknown tool';
+  if (permissionToolInput) { try { permissionToolInput.textContent = JSON.stringify(toolInput, null, 2); } catch (e) { permissionToolInput.textContent = String(toolInput); } }
+  if (permissionDialogOverlay) permissionDialogOverlay.style.display = 'flex';
+}
+function hidePermissionDialog() {
+  if (permissionDialogOverlay) permissionDialogOverlay.style.display = 'none';
+  pendingPermissionRequest = null;
+}
+async function handlePermissionResponse(behavior) {
+  if (!pendingPermissionRequest) return;
+  const { chatId, requestId } = pendingPermissionRequest;
+  hidePermissionDialog();
+  if (window.electronAPI && typeof window.electronAPI.respondToPermission === 'function') { await window.electronAPI.respondToPermission(chatId, requestId, behavior); }
+}
+
 // Setup all event listeners
 function setupEventListeners() {
   // Home form
@@ -1245,6 +1339,12 @@ function setupEventListeners() {
   if (settingsFolderCancelBtn) settingsFolderCancelBtn.addEventListener('click', cancelFolderInstruction);
   if (settingsFolderSaveBtn) settingsFolderSaveBtn.addEventListener('click', saveFolderInstruction);
   if (settingsSaveInstructionsBtn) settingsSaveInstructionsBtn.addEventListener('click', saveInstructions);
+
+  // Permission settings
+  if (settingsAddDirectoryBtn) settingsAddDirectoryBtn.addEventListener('click', addAllowedDirectory);
+  if (settingsSavePermissionsBtn) settingsSavePermissionsBtn.addEventListener('click', savePermissions);
+  if (permissionAllowBtn) permissionAllowBtn.addEventListener('click', () => handlePermissionResponse('allow'));
+  if (permissionDenyBtn) permissionDenyBtn.addEventListener('click', () => handlePermissionResponse('deny'));
 
   // File attachment buttons
   const homeAttachBtn = document.getElementById('homeAttachBtn');
@@ -1857,6 +1957,40 @@ async function handleSendMessage(e) {
                 updateTodos(toolInput.todos);
               }
 
+              // Extract artifacts from Write/Edit tool calls
+              if ((toolName === 'Write' || toolName === 'Edit') && toolInput.file_path && toolInput.content) {
+                const filePath = toolInput.file_path;
+                const fileName = filePath.split('/').pop();
+                const ext = fileName.includes('.') ? fileName.split('.').pop() : '';
+                const langMap = { py: 'python', js: 'javascript', ts: 'typescript', html: 'html', css: 'css', json: 'json', sh: 'bash', sql: 'sql', rs: 'rust', go: 'go', java: 'java', rb: 'ruby', php: 'php', c: 'c', cpp: 'cpp', swift: 'swift', kt: 'kotlin', yaml: 'yaml', yml: 'yaml', toml: 'toml', xml: 'xml' };
+                const lang = langMap[ext] || ext || 'text';
+                const code = toolInput.content;
+                const alreadyTracked = [...artifactStore.values()].some(a => a.versions[0] === code);
+                if (!alreadyTracked) {
+                  const artId = 'art_' + (++artifactCounter);
+                  const msgEl = contentDiv.closest('.message');
+                  artifactStore.set(artId, {
+                    id: artId, type: 'code', language: lang,
+                    title: fileName,
+                    versions: [code], currentVersion: 0,
+                    messageId: msgEl?.dataset?.messageId || null
+                  });
+                  // Insert pill after the inline tool call element
+                  const pill = document.createElement('button');
+                  pill.className = 'artifact-pill';
+                  pill.textContent = 'Open in editor: ' + fileName;
+                  pill.dataset.artifactId = artId;
+                  pill.addEventListener('click', () => openArtifactPanel(artId));
+                  const toolDiv = contentDiv.querySelector(`.inline-tool-call[data-tool-id="${toolCall.id}"]`);
+                  if (toolDiv) {
+                    toolDiv.insertAdjacentElement('afterend', pill);
+                  } else {
+                    contentDiv.appendChild(pill);
+                  }
+                  openArtifactPanel(artId);
+                }
+              }
+
               hasContent = true;
             } else if (data.type === 'tool_result' || data.type === 'result') {
               const result = data.result || data.content || data;
@@ -1876,6 +2010,8 @@ async function handleSendMessage(e) {
                 if (loadingIndicator) loadingIndicator.remove();
               }
               hasContent = true;
+            } else if (data.type === 'permission_request') {
+              showPermissionDialog(data.chatId, data.requestId, data.toolName, data.toolInput);
             } else if (data.type === 'assistant' && data.message) {
               if (data.message.content && Array.isArray(data.message.content)) {
                 for (const block of data.message.content) {
@@ -1887,6 +2023,38 @@ async function handleSendMessage(e) {
                     addInlineToolCall(contentDiv, toolName, toolInput, toolCall.id);
                     if (apiId) {
                       pendingToolCalls.set(apiId, toolCall.id);
+                    }
+                    // Extract artifacts from Write/Edit tool calls in assistant blocks
+                    if ((toolName === 'Write' || toolName === 'Edit') && toolInput.file_path && toolInput.content) {
+                      const filePath = toolInput.file_path;
+                      const fileName = filePath.split('/').pop();
+                      const ext = fileName.includes('.') ? fileName.split('.').pop() : '';
+                      const langMap = { py: 'python', js: 'javascript', ts: 'typescript', html: 'html', css: 'css', json: 'json', sh: 'bash', sql: 'sql', rs: 'rust', go: 'go', java: 'java', rb: 'ruby', php: 'php', c: 'c', cpp: 'cpp', swift: 'swift', kt: 'kotlin', yaml: 'yaml', yml: 'yaml', toml: 'toml', xml: 'xml' };
+                      const lang = langMap[ext] || ext || 'text';
+                      const code = toolInput.content;
+                      const alreadyTracked = [...artifactStore.values()].some(a => a.versions[0] === code);
+                      if (!alreadyTracked) {
+                        const artId = 'art_' + (++artifactCounter);
+                        const msgEl = contentDiv.closest('.message');
+                        artifactStore.set(artId, {
+                          id: artId, type: 'code', language: lang,
+                          title: fileName,
+                          versions: [code], currentVersion: 0,
+                          messageId: msgEl?.dataset?.messageId || null
+                        });
+                        const pill = document.createElement('button');
+                        pill.className = 'artifact-pill';
+                        pill.textContent = 'Open in editor: ' + fileName;
+                        pill.dataset.artifactId = artId;
+                        pill.addEventListener('click', () => openArtifactPanel(artId));
+                        const toolDiv = contentDiv.querySelector(`.inline-tool-call[data-tool-id="${toolCall.id}"]`);
+                        if (toolDiv) {
+                          toolDiv.insertAdjacentElement('afterend', pill);
+                        } else {
+                          contentDiv.appendChild(pill);
+                        }
+                        openArtifactPanel(artId);
+                      }
                     }
                     hasContent = true;
                   } else if (block.type === 'text' && block.text) {
@@ -3544,7 +3712,7 @@ function detectArtifacts(rawContent) {
     const lang = match[1] || 'text';
     const code = match[2];
     const id = 'art_' + (++artifactCounter);
-    artifacts.push({ id, type: 'code', language: lang, content: code.trimEnd(), title: deriveTitle(lang) });
+    artifacts.push({ id, type: 'code', language: lang, content: code.trimEnd(), title: deriveTitle(lang, code.trimEnd()) });
   }
   if (!artifacts.length) {
     const docRe = /^(#{1,3}\s+.+)\n([\s\S]{400,})/m;
@@ -3557,9 +3725,16 @@ function detectArtifacts(rawContent) {
   return artifacts;
 }
 
-function deriveTitle(lang) {
-  const exts = { python: 'script.py', javascript: 'script.js', typescript: 'script.ts', html: 'page.html', css: 'style.css', json: 'data.json', bash: 'script.sh', shell: 'script.sh', sql: 'query.sql', rust: 'main.rs', go: 'main.go', java: 'Main.java', ruby: 'script.rb', php: 'script.php', c: 'main.c', cpp: 'main.cpp', swift: 'main.swift', kotlin: 'Main.kt', yaml: 'config.yaml', toml: 'config.toml', xml: 'data.xml' };
-  return exts[lang] || lang + ' snippet';
+function deriveTitle(lang, content) {
+  const exts = { python: '.py', javascript: '.js', typescript: '.ts', html: '.html', css: '.css', json: '.json', bash: '.sh', shell: '.sh', sql: '.sql', rust: '.rs', go: '.go', java: '.java', ruby: '.rb', php: '.php', c: '.c', cpp: '.cpp', swift: '.swift', kotlin: '.kt', yaml: '.yaml', toml: '.toml', xml: '.xml' };
+  // If content is short, derive a preview-based title
+  if (content) {
+    const firstLine = content.split('\n')[0].trim().slice(0, 30);
+    const ext = exts[lang] || '';
+    if (firstLine) return firstLine + (ext ? ' ' + ext : '');
+  }
+  const defaultNames = { python: 'script.py', javascript: 'script.js', typescript: 'script.ts', html: 'page.html', css: 'style.css', json: 'data.json', bash: 'script.sh', shell: 'script.sh', sql: 'query.sql', rust: 'main.rs', go: 'main.go', java: 'Main.java', ruby: 'script.rb', php: 'script.php', c: 'main.c', cpp: 'main.cpp', swift: 'main.swift', kotlin: 'Main.kt', yaml: 'config.yaml', toml: 'config.toml', xml: 'data.xml' };
+  return defaultNames[lang] || lang + ' snippet';
 }
 
 function injectArtifactPill(contentDiv, artifact) {
@@ -3822,8 +3997,8 @@ function initVaultView() {
   if (vaultInitialized) return;
   vaultInitialized = true;
   setupVaultEventListeners();
-  const api = useApi();
-  if (!api) {
+  const hasSupabase = useApi();
+  if (!hasSupabase) {
     if (vaultContent) vaultContent.classList.add('hidden');
     if (vaultUnavailable) vaultUnavailable.classList.remove('hidden');
     return;
@@ -3876,16 +4051,15 @@ function toggleVaultViewMode() {
 }
 
 async function loadVaultContents() {
-  const api = useApi();
-  if (!api) return;
+  if (!window.electronAPI?.getVaultFolders) return;
   try {
     const source = vaultSourceFilter ? vaultSourceFilter.value : 'all';
     const sortVal = vaultSortSelect ? vaultSortSelect.value : 'created_at:desc';
     const [sortField, sortDir] = sortVal.split(':');
 
     const [foldersRes, assetsRes] = await Promise.all([
-      api.getVaultFolders(currentVaultFolderId || undefined),
-      api.getVaultAssets({
+      window.electronAPI.getVaultFolders(currentVaultFolderId || undefined),
+      window.electronAPI.getVaultAssets({
         folderId: currentVaultFolderId || undefined,
         sort: sortField,
         dir: sortDir,
@@ -3990,10 +4164,9 @@ async function renderVaultBreadcrumbs() {
 
   if (!currentVaultFolderId) return;
 
-  const api = useApi();
-  if (!api) return;
+  if (!window.electronAPI?.getVaultBreadcrumbs) return;
   try {
-    const res = await api.getVaultBreadcrumbs(currentVaultFolderId);
+    const res = await window.electronAPI.getVaultBreadcrumbs(currentVaultFolderId);
     const crumbs = res.breadcrumbs || [];
     crumbs.forEach(crumb => {
       const sep = document.createElement('span');
@@ -4020,10 +4193,9 @@ function navigateToFolder(folderId) {
 async function promptNewFolder() {
   const name = prompt('Folder name:');
   if (!name || !name.trim()) return;
-  const api = useApi();
-  if (!api) return;
+  if (!window.electronAPI?.createVaultFolder) return;
   try {
-    await api.createVaultFolder(name.trim(), currentVaultFolderId || undefined);
+    await window.electronAPI.createVaultFolder(name.trim(), currentVaultFolderId || undefined);
     loadVaultContents();
   } catch (err) {
     console.error('[VAULT] Create folder error:', err);
@@ -4033,11 +4205,10 @@ async function promptNewFolder() {
 
 async function handleVaultUpload() {
   if (!vaultFileInput || !vaultFileInput.files.length) return;
-  const api = useApi();
-  if (!api) return;
+  if (!window.electronAPI?.uploadVaultAsset) return;
   const file = vaultFileInput.files[0];
   try {
-    await api.uploadVaultAsset(file, currentVaultFolderId || undefined, 'upload');
+    await window.electronAPI.uploadVaultAsset(file, currentVaultFolderId || undefined, 'upload');
     vaultFileInput.value = '';
     loadVaultContents();
   } catch (err) {
@@ -4084,39 +4255,37 @@ function showVaultContextMenu(e, type, item) {
 }
 
 async function handleFolderAction(action, folder) {
-  const api = useApi();
-  if (!api) return;
+  if (!window.electronAPI) return;
   if (action === 'rename') {
     const name = prompt('New folder name:', folder.name);
     if (!name || !name.trim()) return;
     try {
-      await api.updateVaultFolder(folder.id, { name: name.trim() });
+      await window.electronAPI.updateVaultFolder(folder.id, { name: name.trim() });
       loadVaultContents();
     } catch (err) { alert('Rename failed: ' + err.message); }
   } else if (action === 'delete') {
     if (!confirm('Delete folder "' + folder.name + '" and all contents?')) return;
     try {
-      await api.deleteVaultFolder(folder.id);
+      await window.electronAPI.deleteVaultFolder(folder.id);
       loadVaultContents();
     } catch (err) { alert('Delete failed: ' + err.message); }
   }
 }
 
 async function handleAssetAction(action, asset) {
-  const api = useApi();
-  if (!api) return;
+  if (!window.electronAPI) return;
   if (action === 'open') {
     openAssetPreview(asset);
   } else if (action === 'rename') {
     const name = prompt('New name:', asset.display_name || asset.file_name);
     if (!name || !name.trim()) return;
     try {
-      await api.updateVaultAsset(asset.id, { display_name: name.trim() });
+      await window.electronAPI.updateVaultAsset(asset.id, { display_name: name.trim() });
       loadVaultContents();
     } catch (err) { alert('Rename failed: ' + err.message); }
   } else if (action === 'download') {
     try {
-      const res = await api.getVaultAssetUrl(asset.id);
+      const res = await window.electronAPI.getVaultAssetUrl(asset.id);
       if (res.url) {
         const a = document.createElement('a');
         a.href = res.url;
@@ -4127,17 +4296,16 @@ async function handleAssetAction(action, asset) {
   } else if (action === 'delete') {
     if (!confirm('Delete "' + (asset.display_name || asset.file_name) + '"?')) return;
     try {
-      await api.deleteVaultAsset(asset.id);
+      await window.electronAPI.deleteVaultAsset(asset.id);
       loadVaultContents();
     } catch (err) { alert('Delete failed: ' + err.message); }
   }
 }
 
 async function openAssetPreview(asset) {
-  const api = useApi();
-  if (!api) return;
+  if (!window.electronAPI?.getVaultAssetUrl) return;
   try {
-    const res = await api.getVaultAssetUrl(asset.id);
+    const res = await window.electronAPI.getVaultAssetUrl(asset.id);
     if (!res.url) return;
 
     // Build preview overlay using DOM methods
