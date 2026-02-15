@@ -2,20 +2,20 @@ import { getAdminClient } from './client.js';
 
 const db = () => getAdminClient();
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const getOpenAIKey = () => process.env.OPENAI_API_KEY;
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
 
 // Generate embedding via OpenAI API
 async function getEmbedding(text) {
-  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
+  if (!getOpenAIKey()) throw new Error('getOpenAIKey() not set');
 
   const response = await fetch('https://api.openai.com/v1/embeddings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`
+      'Authorization': `Bearer ${getOpenAIKey()}`
     },
     body: JSON.stringify({ input: text.substring(0, 8000), model: EMBEDDING_MODEL })
   });
@@ -45,7 +45,7 @@ function chunkText(text) {
 
 // Embed a message
 export async function embedMessage(messageId, content, userId) {
-  if (!OPENAI_API_KEY || !content?.trim()) return;
+  if (!getOpenAIKey() || !content?.trim()) return;
 
   try {
     const chunks = chunkText(content);
@@ -68,7 +68,7 @@ export async function embedMessage(messageId, content, userId) {
 
 // Embed an attachment (text content)
 export async function embedAttachment(attachmentId, content, userId) {
-  if (!OPENAI_API_KEY || !content?.trim()) return;
+  if (!getOpenAIKey() || !content?.trim()) return;
 
   try {
     const chunks = chunkText(content);
@@ -106,7 +106,7 @@ export async function searchSimilar(queryText, userId, matchCount = 10, threshol
 
 // Process unembedded messages (batch job)
 export async function processUnembeddedMessages() {
-  if (!OPENAI_API_KEY) return;
+  if (!getOpenAIKey()) return;
 
   try {
     // Find messages that don't have embeddings yet

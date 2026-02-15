@@ -1,18 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-
 // Admin client — bypasses RLS, used for server-side operations
 let adminClient = null;
 
 export function getAdminClient() {
   if (!adminClient) {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) {
       throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars');
     }
-    adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    adminClient = createClient(url, key, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
   }
@@ -21,10 +19,12 @@ export function getAdminClient() {
 
 // Per-request user client — respects RLS using the user's JWT
 export function getUserClient(accessToken) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  const url = process.env.SUPABASE_URL;
+  const anonKey = process.env.SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
     throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY env vars');
   }
-  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  return createClient(url, anonKey, {
     global: { headers: { Authorization: `Bearer ${accessToken}` } },
     auth: { autoRefreshToken: false, persistSession: false }
   });
@@ -32,7 +32,7 @@ export function getUserClient(accessToken) {
 
 export function getPublicConfig() {
   return {
-    supabaseUrl: SUPABASE_URL || '',
-    supabaseAnonKey: SUPABASE_ANON_KEY || ''
+    supabaseUrl: process.env.SUPABASE_URL || '',
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ''
   };
 }

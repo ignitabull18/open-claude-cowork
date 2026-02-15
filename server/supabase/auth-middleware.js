@@ -1,6 +1,5 @@
 import { getAdminClient } from './client.js';
 
-const ALLOW_ANONYMOUS = process.env.ALLOW_ANONYMOUS === 'true';
 
 /** Parse ADMIN_EMAILS env var into a Set of lowercased email addresses. */
 function getAdminEmails() {
@@ -33,7 +32,7 @@ export async function requireAuth(req, res, next) {
   }
 
   // No token provided
-  if (ALLOW_ANONYMOUS) {
+  if (process.env.ALLOW_ANONYMOUS === 'true') {
     req.user = { id: 'anonymous', email: null, role: 'anon' };
     return next();
   }

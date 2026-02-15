@@ -2597,5 +2597,682 @@ function hideSearchResults() {
   }
 }
 
+// ==================== REPORTS VIEW ====================
+
+// HTML-escape helper to prevent XSS when interpolating dynamic values
+function escHtml(str) {
+  if (str === null || str === undefined) return '';
+  const div = document.createElement('div');
+  div.textContent = String(str);
+  return div.innerHTML;
+}
+
+let reportChartInstances = new Map();
+let currentReportId = null;
+let reportsInitialized = false;
+
+function initReportsView() {
+  if (!reportsInitialized) {
+    reportsInitialized = true;
+    setupReportsEventListeners();
+  }
+  showReportsListView();
+}
+
+function setupReportsEventListeners() {
+  document.querySelectorAll('.template-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const tpl = card.dataset.template;
+      if (tpl === 'custom') {
+        openReportBuilder(null);
+      } else {
+        openReportBuilder(getTemplateConfig(tpl));
+      }
+    });
+  });
+
+  const newReportBtn = document.getElementById('reportsNewBtn');
+  if (newReportBtn) newReportBtn.addEventListener('click', () => openReportBuilder(null));
+
+  const runBtn = document.getElementById('builderRunBtn');
+  if (runBtn) runBtn.addEventListener('click', () => runCurrentReport());
+
+  const saveBtn = document.getElementById('builderSaveBtn');
+  if (saveBtn) saveBtn.addEventListener('click', () => saveCurrentReport());
+}
+
+function getTemplateConfig(template) {
+  const configs = {
+    usage_over_time: { source: 'messages', groupBy: 'day', chartType: 'line', metrics: ['count'], template: 'usage_over_time' },
+    provider_breakdown: { source: 'messages', groupBy: 'provider', chartType: 'doughnut', metrics: ['count'], template: 'provider_breakdown' },
+    tool_usage: { source: 'tool_calls', groupBy: 'tool', chartType: 'bar', metrics: ['count'], template: 'tool_usage' },
+    chat_summary: { source: 'messages', groupBy: 'none', chartType: 'table', metrics: ['count'], template: 'chat_summary' }
+  };
+  return configs[template] || null;
+}
+
+function showReportsListView() {
+  const listView = document.getElementById('reportsListView');
+  const builderView = document.getElementById('reportsBuilderView');
+  if (listView) listView.classList.remove('hidden');
+  if (builderView) builderView.classList.add('hidden');
+  currentReportId = null;
+  loadReportSummary();
+  loadSavedReports();
+}
+
+function showReportsBuilderView() {
+  const listView = document.getElementById('reportsListView');
+  const builderView = document.getElementById('reportsBuilderView');
+  if (listView) listView.classList.add('hidden');
+  if (builderView) builderView.classList.remove('hidden');
+}
+
+function openReportBuilder(config) {
+  showReportsBuilderView();
+  const nameInput = document.getElementById('builderReportName');
+  const sourceSelect = document.getElementById('builderSource');
+  const groupBySelect = document.getElementById('builderGroupBy');
+  const chartTypeSelect = document.getElementById('builderChartType');
+  const dateRange = document.getElementById('builderDays');
+
+  if (config) {
+    if (nameInput) nameInput.value = config.name || (config.template ? config.template.replace(/_/g, ' ') : '');
+    if (sourceSelect) sourceSelect.value = config.source || 'messages';
+    if (groupBySelect) groupBySelect.value = config.groupBy || 'day';
+    if (chartTypeSelect) chartTypeSelect.value = config.chartType || 'line';
+    if (dateRange) dateRange.value = config.dateRange || '30';
+  } else {
+    if (nameInput) nameInput.value = '';
+    if (sourceSelect) sourceSelect.value = 'messages';
+    if (groupBySelect) groupBySelect.value = 'day';
+    if (chartTypeSelect) chartTypeSelect.value = 'line';
+    if (dateRange) dateRange.value = '30';
+  }
+  const canvas = document.getElementById('reportChart');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  const tableContainer = document.getElementById('reportTableContainer');
+  if (tableContainer) tableContainer.textContent = '';
+  const noData = document.getElementById('reportNoData');
+  if (noData) noData.classList.add('hidden');
+}
+
+function getBuilderConfig() {
+  return {
+    source: document.getElementById('builderSource')?.value || 'messages',
+    groupBy: document.getElementById('builderGroupBy')?.value || 'day',
+    chartType: document.getElementById('builderChartType')?.value || 'line',
+    dateRange: document.getElementById('builderDays')?.value || '30',
+    metrics: ['count']
+  };
+}
+
+async function runCurrentReport() {
+  if (!useApi()) return;
+  const config = getBuilderConfig();
+  const runBtn = document.getElementById('builderRunBtn');
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Running...'; }
+
+  try {
+    let data;
+    if (config.source === 'messages' && config.groupBy === 'day' && config.chartType === 'line') {
+      data = await window.electronAPI.getReportDailyMessages(parseInt(config.dateRange) || 30);
+    } else if (config.source === 'messages' && config.groupBy === 'provider') {
+      data = await window.electronAPI.getReportProviderUsage(parseInt(config.dateRange) || 30);
+    } else if (config.source === 'tool_calls') {
+      data = await window.electronAPI.getReportToolUsage(parseInt(config.dateRange) || 30);
+    } else if (config.chartType === 'table' && config.groupBy === 'none') {
+      data = await window.electronAPI.getReportSummary();
+    } else {
+      data = await window.electronAPI.executeReportQuery(config);
+    }
+    renderReportResult(config, data);
+  } catch (err) {
+    console.error('Report error:', err);
+    const tableContainer = document.getElementById('reportTableContainer');
+    if (tableContainer) tableContainer.textContent = 'Error: ' + err.message;
+  } finally {
+    if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Run'; }
+  }
+}
+
+function renderReportResult(config, data) {
+  const chartContainer = document.getElementById('reportChartContainer');
+  const tableContainer = document.getElementById('reportTableContainer');
+  const canvas = document.getElementById('reportChart');
+
+  if (config.chartType === 'table' || !window.Chart) {
+    if (chartContainer) chartContainer.classList.add('hidden');
+    if (tableContainer) { tableContainer.classList.remove('hidden'); renderReportTable(tableContainer, data); }
+  } else {
+    if (tableContainer) tableContainer.classList.add('hidden');
+    if (chartContainer) chartContainer.classList.remove('hidden');
+    if (canvas) renderReportChart(canvas, config.chartType, data);
+  }
+}
+
+function renderReportTable(container, data) {
+  container.textContent = '';
+  if (!data) { container.textContent = 'No data'; return; }
+  // Summary object (key-value)
+  if (data.total_chats !== undefined || data.total_messages !== undefined) {
+    const cards = document.createElement('div');
+    cards.className = 'report-summary-cards';
+    [
+      { value: data.total_chats || 0, label: 'Chats' },
+      { value: data.total_messages || 0, label: 'Messages' },
+      { value: data.active_days || 0, label: 'Active Days' },
+      { value: Number(data.avg_messages_per_day || 0).toFixed(1), label: 'Avg/Day' }
+    ].forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'report-summary-card';
+      const val = document.createElement('div');
+      val.className = 'report-summary-value';
+      val.textContent = item.value;
+      const lbl = document.createElement('div');
+      lbl.className = 'report-summary-label';
+      lbl.textContent = item.label;
+      card.appendChild(val);
+      card.appendChild(lbl);
+      cards.appendChild(card);
+    });
+    container.appendChild(cards);
+    return;
+  }
+  // Array data → table
+  const rows = Array.isArray(data) ? data : (data.rows || data.data || []);
+  if (!rows.length) { container.textContent = 'No data returned'; return; }
+  const keys = Object.keys(rows[0]);
+  const table = document.createElement('table');
+  table.className = 'report-data-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  keys.forEach(k => { const th = document.createElement('th'); th.textContent = k.replace(/_/g, ' '); headRow.appendChild(th); });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    keys.forEach(k => { const td = document.createElement('td'); td.textContent = row[k] !== null ? row[k] : ''; tr.appendChild(td); });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function renderReportChart(canvas, chartType, data) {
+  const rows = Array.isArray(data) ? data : (data.rows || data.data || []);
+  if (!rows.length) return;
+
+  const existing = reportChartInstances.get(canvas.id);
+  if (existing) existing.destroy();
+
+  const keys = Object.keys(rows[0]);
+  const labelKey = keys[0];
+  const valueKeys = keys.slice(1);
+  const labels = rows.map(r => r[labelKey]);
+  const colorPalette = ['#6366f1', '#22d3ee', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#ec4899', '#14b8a6'];
+
+  const datasets = valueKeys.map((vk, i) => ({
+    label: vk.replace(/_/g, ' '),
+    data: rows.map(r => Number(r[vk]) || 0),
+    backgroundColor: chartType === 'doughnut' ? colorPalette : colorPalette[i % colorPalette.length],
+    borderColor: chartType === 'line' ? colorPalette[i % colorPalette.length] : undefined,
+    borderWidth: chartType === 'line' ? 2 : 1,
+    fill: chartType === 'line' ? false : undefined,
+    tension: 0.3
+  }));
+
+  const mappedType = chartType === 'horizontal_bar' ? 'bar' : chartType;
+  const chart = new window.Chart(canvas.getContext('2d'), {
+    type: mappedType,
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: chartType === 'horizontal_bar' ? 'y' : 'x',
+      plugins: { legend: { display: valueKeys.length > 1 || chartType === 'doughnut' } },
+      scales: chartType === 'doughnut' ? {} : {
+        y: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+        x: { ticks: { color: '#9ca3af', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.06)' } }
+      }
+    }
+  });
+  reportChartInstances.set(canvas.id, chart);
+}
+
+async function saveCurrentReport() {
+  if (!useApi()) return;
+  const name = document.getElementById('builderReportName')?.value?.trim();
+  if (!name) { alert('Please enter a report name'); return; }
+  const config = getBuilderConfig();
+  const saveBtn = document.getElementById('builderSaveBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+  try {
+    if (currentReportId) {
+      await window.electronAPI.updateSavedReport(currentReportId, { name, report_config: config });
+    } else {
+      const result = await window.electronAPI.createSavedReport({ name, report_config: config });
+      currentReportId = result.id;
+    }
+    if (saveBtn) saveBtn.textContent = 'Saved!';
+    setTimeout(() => { if (saveBtn) saveBtn.textContent = 'Save'; }, 1500);
+  } catch (err) {
+    console.error('Save report error:', err);
+    if (saveBtn) saveBtn.textContent = 'Save';
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+async function loadReportSummary() {
+  if (!useApi()) return;
+  try {
+    const data = await window.electronAPI.getReportSummary();
+    const chatsEl = document.getElementById('reportStatChats');
+    const msgsEl = document.getElementById('reportStatMessages');
+    const daysEl = document.getElementById('reportStatDays');
+    const avgEl = document.getElementById('reportStatAvg');
+    if (chatsEl) chatsEl.textContent = data.total_chats || 0;
+    if (msgsEl) msgsEl.textContent = data.total_messages || 0;
+    if (daysEl) daysEl.textContent = data.active_days || 0;
+    if (avgEl) avgEl.textContent = Number(data.avg_messages_per_day || 0).toFixed(1);
+  } catch (err) {
+    // Show unavailable message when Supabase is not connected
+    const unavailable = document.getElementById('reportsUnavailable');
+    if (unavailable) unavailable.classList.remove('hidden');
+  }
+}
+
+async function loadSavedReports() {
+  if (!useApi()) return;
+  const container = document.getElementById('savedReportsList');
+  if (!container) return;
+  try {
+    const reports = await window.electronAPI.getSavedReports();
+    const list = Array.isArray(reports) ? reports : (reports.data || []);
+    container.textContent = '';
+    if (!list.length) {
+      container.textContent = 'No saved reports yet. Create one from a template or build custom.';
+      return;
+    }
+    list.forEach(r => {
+      const cfg = r.report_config || {};
+      const lastRun = r.last_run_at ? new Date(r.last_run_at).toLocaleDateString() : 'Never';
+      const card = document.createElement('div');
+      card.className = 'saved-report-card';
+      card.dataset.reportId = r.id;
+
+      const info = document.createElement('div');
+      info.className = 'saved-report-info';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'saved-report-name';
+      nameEl.textContent = r.name;
+      const metaEl = document.createElement('div');
+      metaEl.className = 'saved-report-meta';
+      metaEl.textContent = (cfg.chartType || 'table') + ' \u00B7 ' + (cfg.source || 'messages') + ' \u00B7 Last run: ' + lastRun;
+      info.appendChild(nameEl);
+      info.appendChild(metaEl);
+
+      const actions = document.createElement('div');
+      actions.className = 'saved-report-actions';
+      const openBtn = document.createElement('button');
+      openBtn.className = 'btn-sm';
+      openBtn.textContent = 'Open';
+      openBtn.addEventListener('click', (e) => { e.stopPropagation(); openSavedReport(r.id); });
+      const runBtn = document.createElement('button');
+      runBtn.className = 'btn-sm';
+      runBtn.textContent = 'Run';
+      runBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try { await window.electronAPI.runSavedReport(r.id); loadSavedReports(); } catch (err) { console.error(err); }
+      });
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-sm btn-danger';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this report?')) return;
+        try { await window.electronAPI.deleteSavedReport(r.id); loadSavedReports(); } catch (err) { console.error(err); }
+      });
+      actions.appendChild(openBtn);
+      actions.appendChild(runBtn);
+      actions.appendChild(delBtn);
+
+      card.appendChild(info);
+      card.appendChild(actions);
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.textContent = 'Could not load saved reports.';
+  }
+}
+
+async function openSavedReport(reportId) {
+  try {
+    const report = await window.electronAPI.getSavedReport(reportId);
+    currentReportId = reportId;
+    const config = report.report_config || {};
+    config.name = report.name;
+    openReportBuilder(config);
+    if (report.last_result) renderReportResult(config, report.last_result);
+  } catch (err) {
+    console.error('Error opening saved report:', err);
+  }
+}
+
+// ==================== JOBS VIEW ====================
+
+let jobsInitialized = false;
+let editingJobId = null;
+
+function initJobsView() {
+  if (!jobsInitialized) {
+    jobsInitialized = true;
+    setupJobsEventListeners();
+  }
+  loadJobs();
+}
+
+function setupJobsEventListeners() {
+  const newJobBtn = document.getElementById('newJobBtn');
+  if (newJobBtn) newJobBtn.addEventListener('click', () => openJobForm(null));
+
+  const jobFormCancel = document.getElementById('jobFormCancelBtn');
+  if (jobFormCancel) jobFormCancel.addEventListener('click', () => hideJobForm());
+
+  const jobFormSave = document.getElementById('jobFormSaveBtn');
+  if (jobFormSave) jobFormSave.addEventListener('click', () => saveJob());
+
+  const jobTypeSelect = document.getElementById('jobTypeSelect');
+  if (jobTypeSelect) jobTypeSelect.addEventListener('change', () => {
+    const val = jobTypeSelect.value;
+    document.getElementById('jobOneTimeFields')?.classList.toggle('hidden', val !== 'one_time');
+    document.getElementById('jobRecurringFields')?.classList.toggle('hidden', val !== 'recurring');
+    document.getElementById('jobCronFields')?.classList.toggle('hidden', val !== 'cron');
+  });
+
+  const actionTypeSelect = document.getElementById('jobActionType');
+  if (actionTypeSelect) actionTypeSelect.addEventListener('change', () => {
+    const val = actionTypeSelect.value;
+    document.getElementById('actionChatFields')?.classList.toggle('hidden', val !== 'chat_message');
+    document.getElementById('actionReportFields')?.classList.toggle('hidden', val !== 'report_generation');
+    document.getElementById('actionExportFields')?.classList.toggle('hidden', val !== 'data_export');
+    document.getElementById('actionWebhookFields')?.classList.toggle('hidden', val !== 'webhook');
+  });
+}
+
+function openJobForm(job) {
+  const form = document.getElementById('jobsForm');
+  const formTitle = document.getElementById('jobsFormTitle');
+  if (!form) return;
+  form.classList.remove('hidden');
+  editingJobId = job ? job.id : null;
+  if (formTitle) formTitle.textContent = job ? 'Edit Job' : 'New Job';
+
+  document.getElementById('jobNameInput').value = job ? job.name : '';
+  document.getElementById('jobDescInput').value = job ? (job.description || '') : '';
+  document.getElementById('jobTypeSelect').value = job ? job.job_type : 'one_time';
+  document.getElementById('jobTypeSelect').dispatchEvent(new Event('change'));
+  document.getElementById('jobActionType').value = job ? job.action_type : 'chat_message';
+  document.getElementById('jobActionType').dispatchEvent(new Event('change'));
+
+  if (job) {
+    if (job.execute_at) document.getElementById('jobExecuteAt').value = job.execute_at.slice(0, 16);
+    if (job.interval_seconds) document.getElementById('jobIntervalSeconds').value = job.interval_seconds;
+    if (job.cron_expression) document.getElementById('jobCronExpression').value = job.cron_expression;
+    const cfg = job.action_config || {};
+    if (job.action_type === 'chat_message') {
+      document.getElementById('jobChatMessage').value = cfg.message || '';
+      document.getElementById('jobChatProvider').value = cfg.provider || 'claude';
+    } else if (job.action_type === 'report_generation') {
+      document.getElementById('jobReportSelect').value = cfg.reportId || '';
+    } else if (job.action_type === 'data_export') {
+      document.getElementById('jobExportSource').value = cfg.source || 'messages';
+      document.getElementById('jobExportFormat').value = cfg.format || 'csv';
+    } else if (job.action_type === 'webhook') {
+      document.getElementById('jobWebhookUrl').value = cfg.url || '';
+      document.getElementById('jobWebhookMethod').value = cfg.method || 'POST';
+      document.getElementById('jobWebhookBody').value = cfg.body || '';
+    }
+  }
+  loadSavedReportsForJobForm();
+}
+
+async function loadSavedReportsForJobForm() {
+  if (!useApi()) return;
+  const select = document.getElementById('jobReportSelect');
+  if (!select) return;
+  try {
+    const reports = await window.electronAPI.getSavedReports();
+    const list = Array.isArray(reports) ? reports : (reports.data || []);
+    select.textContent = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select a report...';
+    select.appendChild(placeholder);
+    list.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.id;
+      opt.textContent = r.name;
+      select.appendChild(opt);
+    });
+  } catch (err) {
+    select.textContent = '';
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No reports available';
+    select.appendChild(opt);
+  }
+}
+
+function hideJobForm() {
+  const form = document.getElementById('jobsForm');
+  if (form) form.classList.add('hidden');
+  editingJobId = null;
+}
+
+async function saveJob() {
+  if (!useApi()) return;
+  const name = document.getElementById('jobNameInput')?.value?.trim();
+  if (!name) { alert('Please enter a job name'); return; }
+
+  const jobType = document.getElementById('jobTypeSelect')?.value;
+  const actionType = document.getElementById('jobActionType')?.value;
+
+  const jobData = {
+    name,
+    description: document.getElementById('jobDescInput')?.value || '',
+    job_type: jobType,
+    action_type: actionType,
+    action_config: {}
+  };
+
+  if (jobType === 'one_time') jobData.execute_at = document.getElementById('jobExecuteAt')?.value;
+  if (jobType === 'recurring') jobData.interval_seconds = parseInt(document.getElementById('jobIntervalSeconds')?.value) || 3600;
+  if (jobType === 'cron') jobData.cron_expression = document.getElementById('jobCronExpression')?.value;
+
+  if (actionType === 'chat_message') {
+    jobData.action_config = { message: document.getElementById('jobChatMessage')?.value, provider: document.getElementById('jobChatProvider')?.value || 'claude' };
+  } else if (actionType === 'report_generation') {
+    jobData.action_config = { reportId: document.getElementById('jobReportSelect')?.value };
+  } else if (actionType === 'data_export') {
+    jobData.action_config = { source: document.getElementById('jobExportSource')?.value, format: document.getElementById('jobExportFormat')?.value };
+  } else if (actionType === 'webhook') {
+    jobData.action_config = { url: document.getElementById('jobWebhookUrl')?.value, method: document.getElementById('jobWebhookMethod')?.value, body: document.getElementById('jobWebhookBody')?.value };
+  }
+
+  const saveBtn = document.getElementById('jobFormSaveBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+  try {
+    if (editingJobId) {
+      await window.electronAPI.updateJob(editingJobId, jobData);
+    } else {
+      await window.electronAPI.createJob(jobData);
+    }
+    hideJobForm();
+    loadJobs();
+  } catch (err) {
+    console.error('Save job error:', err);
+    alert('Error saving job: ' + err.message);
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+  }
+}
+
+async function loadJobs() {
+  if (!useApi()) return;
+  const container = document.getElementById('jobsList');
+  if (!container) return;
+  try {
+    const jobs = await window.electronAPI.getJobs();
+    const list = Array.isArray(jobs) ? jobs : (jobs.data || []);
+    container.textContent = '';
+    if (!list.length) {
+      container.textContent = 'No scheduled jobs. Click "New Job" to get started.';
+      return;
+    }
+    list.forEach(j => {
+      const statusClass = { active: 'status-active', paused: 'status-paused', completed: 'status-completed', failed: 'status-failed' }[j.status] || '';
+      const nextRun = j.next_run_at ? new Date(j.next_run_at).toLocaleString() : 'N/A';
+
+      const card = document.createElement('div');
+      card.className = 'job-card';
+      card.dataset.jobId = j.id;
+
+      const header = document.createElement('div');
+      header.className = 'job-card-header';
+      const title = document.createElement('div');
+      title.className = 'job-card-title';
+      title.textContent = j.name;
+      const badges = document.createElement('div');
+      badges.className = 'job-badges';
+      const typeBadge = document.createElement('span');
+      typeBadge.className = 'job-type-badge';
+      typeBadge.textContent = j.job_type;
+      const statusBadge = document.createElement('span');
+      statusBadge.className = 'job-status-badge ' + statusClass;
+      statusBadge.textContent = j.status;
+      badges.appendChild(typeBadge);
+      badges.appendChild(statusBadge);
+      header.appendChild(title);
+      header.appendChild(badges);
+
+      const meta = document.createElement('div');
+      meta.className = 'job-card-meta';
+      meta.textContent = 'Action: ' + j.action_type + ' \u00B7 Next: ' + nextRun + ' \u00B7 Runs: ' + (j.run_count || 0);
+
+      const actions = document.createElement('div');
+      actions.className = 'job-card-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn-sm';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => openJobForm(j));
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'btn-sm';
+      toggleBtn.textContent = j.status === 'active' ? 'Pause' : 'Resume';
+      toggleBtn.addEventListener('click', async () => {
+        try {
+          const newStatus = j.status === 'active' ? 'paused' : 'active';
+          await window.electronAPI.updateJob(j.id, { status: newStatus });
+          loadJobs();
+        } catch (err) { console.error(err); }
+      });
+
+      const runNowBtn = document.createElement('button');
+      runNowBtn.className = 'btn-sm';
+      runNowBtn.textContent = 'Run Now';
+      runNowBtn.addEventListener('click', async () => {
+        try { await window.electronAPI.runJob(j.id); loadJobs(); } catch (err) { console.error(err); }
+      });
+
+      const historyBtn = document.createElement('button');
+      historyBtn.className = 'btn-sm';
+      historyBtn.textContent = 'History';
+      historyBtn.addEventListener('click', () => toggleJobExecutions(j.id));
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-sm btn-danger';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', async () => {
+        if (!confirm('Delete this job?')) return;
+        try { await window.electronAPI.deleteJob(j.id); loadJobs(); } catch (err) { console.error(err); }
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(toggleBtn);
+      actions.appendChild(runNowBtn);
+      actions.appendChild(historyBtn);
+      actions.appendChild(delBtn);
+
+      const execPanel = document.createElement('div');
+      execPanel.className = 'job-executions-panel hidden';
+      execPanel.id = 'jobExec_' + j.id;
+
+      card.appendChild(header);
+      card.appendChild(meta);
+      card.appendChild(actions);
+      card.appendChild(execPanel);
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.textContent = 'Connect Supabase to use scheduled jobs.';
+  }
+}
+
+async function toggleJobExecutions(jobId) {
+  const panel = document.getElementById('jobExec_' + jobId);
+  if (!panel) return;
+  if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  panel.textContent = 'Loading...';
+  try {
+    const execs = await window.electronAPI.getJobExecutions(jobId, 10);
+    const list = Array.isArray(execs) ? execs : (execs.data || []);
+    panel.textContent = '';
+    if (!list.length) { panel.textContent = 'No executions yet.'; return; }
+    const table = document.createElement('table');
+    table.className = 'report-data-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    ['Status', 'Started', 'Duration', 'Error'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    list.forEach(e => {
+      const tr = document.createElement('tr');
+      const tdStatus = document.createElement('td');
+      const badge = document.createElement('span');
+      badge.className = 'job-status-badge ' + (e.status === 'success' ? 'status-active' : e.status === 'failed' ? 'status-failed' : 'status-paused');
+      badge.textContent = e.status;
+      tdStatus.appendChild(badge);
+      const tdStarted = document.createElement('td');
+      tdStarted.textContent = new Date(e.started_at).toLocaleString();
+      const tdDuration = document.createElement('td');
+      tdDuration.textContent = e.duration_ms ? (e.duration_ms / 1000).toFixed(1) + 's' : '-';
+      const tdError = document.createElement('td');
+      tdError.textContent = e.error || '-';
+      tr.appendChild(tdStatus);
+      tr.appendChild(tdStarted);
+      tr.appendChild(tdDuration);
+      tr.appendChild(tdError);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    panel.appendChild(table);
+  } catch (err) {
+    panel.textContent = 'Error loading executions.';
+  }
+}
+
 // Initialize on load
 window.addEventListener('load', init);
