@@ -137,7 +137,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getSettings: async () => {
     try {
-      const response = await fetch(`${SERVER_URL}/api/settings`);
+      const response = await fetch(`${SERVER_URL}/api/settings`, {
+        headers: buildHeaders()
+      });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return await response.json();
     } catch (err) {
@@ -149,7 +151,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     try {
       const response = await fetch(`${SERVER_URL}/api/settings`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildHeaders(),
         body: JSON.stringify(body)
       });
       if (!response.ok) {
@@ -159,6 +161,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return await response.json();
     } catch (err) {
       throw new Error(err.message || 'Failed to save settings');
+    }
+  },
+
+  respondToPermission: async (chatId, requestId, behavior, message) => {
+    try {
+      const response = await fetch(`${SERVER_URL}/api/permission-response`, {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify({ chatId, requestId, behavior, message })
+      });
+      return await response.json();
+    } catch (err) {
+      return { success: false, error: err.message };
     }
   },
 
@@ -399,6 +414,54 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   getVaultStats: async () => {
     const response = await fetch(`${SERVER_URL}/api/vault/stats`, { headers: buildHeaders() });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+
+  // Document generation
+  getDocuments: async () => {
+    const response = await fetch(`${SERVER_URL}/api/documents`, { headers: buildHeaders() });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  getDocumentUrl: (filename) => {
+    return `${SERVER_URL}/api/documents/${encodeURIComponent(filename)}`;
+  },
+
+  // ==================== PLUGINS ====================
+  getPlugins: async () => {
+    const response = await fetch(`${SERVER_URL}/api/plugins`, { headers: buildHeaders() });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  enablePlugin: async (name) => {
+    const response = await fetch(`${SERVER_URL}/api/plugins/${encodeURIComponent(name)}/enable`, {
+      method: 'POST', headers: buildHeaders()
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  disablePlugin: async (name) => {
+    const response = await fetch(`${SERVER_URL}/api/plugins/${encodeURIComponent(name)}/disable`, {
+      method: 'POST', headers: buildHeaders()
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
+  installPlugin: async (gitUrl) => {
+    const response = await fetch(`${SERVER_URL}/api/plugins/install`, {
+      method: 'POST', headers: buildHeaders(), body: JSON.stringify({ gitUrl })
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'HTTP ' + response.status);
+    }
+    return await response.json();
+  },
+  removePlugin: async (dirName) => {
+    const response = await fetch(`${SERVER_URL}/api/plugins/${encodeURIComponent(dirName)}`, {
+      method: 'DELETE', headers: buildHeaders()
+    });
     if (!response.ok) throw new Error('HTTP ' + response.status);
     return await response.json();
   }

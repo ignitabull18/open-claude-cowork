@@ -3,8 +3,10 @@ import { resetMockDB, seedRpc, createMockSupabaseClient } from '../../../mocks/s
 
 const mockClient = createMockSupabaseClient();
 
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => mockClient)
+vi.mock('../../../../server/supabase/client.js', () => ({
+  getAdminClient: vi.fn(() => mockClient),
+  getUserClient: vi.fn(() => mockClient),
+  getPublicConfig: vi.fn(() => ({ supabaseUrl: 'https://test.supabase.co', supabaseAnonKey: 'test-anon-key' }))
 }));
 
 import {

@@ -30,6 +30,11 @@ export function getUserClient(accessToken) {
   });
 }
 
+/** @internal Test-only: clear the cached admin client so tests can start fresh. */
+export function _resetAdminClient() {
+  adminClient = null;
+}
+
 export function getPublicConfig() {
   return {
     supabaseUrl: process.env.SUPABASE_URL || '',

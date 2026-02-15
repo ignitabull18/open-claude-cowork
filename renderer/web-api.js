@@ -474,6 +474,54 @@
       const response = await fetch(apiUrl('/api/vault/stats'), { headers: buildHeaders() });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return await response.json();
+    },
+
+    // Document generation
+    getDocuments: async function () {
+      const response = await fetch(apiUrl('/api/documents'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getDocumentUrl: function (filename) {
+      return apiUrl('/api/documents/' + encodeURIComponent(filename));
+    },
+
+    // ==================== PLUGINS ====================
+    getPlugins: async function () {
+      const response = await fetch(apiUrl('/api/plugins'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    enablePlugin: async function (name) {
+      const response = await fetch(apiUrl('/api/plugins/' + encodeURIComponent(name) + '/enable'), {
+        method: 'POST', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    disablePlugin: async function (name) {
+      const response = await fetch(apiUrl('/api/plugins/' + encodeURIComponent(name) + '/disable'), {
+        method: 'POST', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    installPlugin: async function (gitUrl) {
+      const response = await fetch(apiUrl('/api/plugins/install'), {
+        method: 'POST', headers: buildHeaders(), body: JSON.stringify({ gitUrl })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(function () { return {}; });
+        throw new Error(data.error || 'HTTP ' + response.status);
+      }
+      return await response.json();
+    },
+    removePlugin: async function (dirName) {
+      const response = await fetch(apiUrl('/api/plugins/' + encodeURIComponent(dirName)), {
+        method: 'DELETE', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
     }
   };
 })();

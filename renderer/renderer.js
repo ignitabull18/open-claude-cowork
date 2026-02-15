@@ -101,6 +101,17 @@ const settingsFileDeleteConfirmation = document.getElementById('settingsFileDele
 const settingsSavePermissionsBtn = document.getElementById('settingsSavePermissionsBtn');
 const settingsPermissionsStatus = document.getElementById('settingsPermissionsStatus');
 
+// DOM Elements - Document Generation Settings
+const settingsDocOutputDir = document.getElementById('settingsDocOutputDir');
+const settingsSaveDocumentsBtn = document.getElementById('settingsSaveDocumentsBtn');
+const settingsDocumentsStatus = document.getElementById('settingsDocumentsStatus');
+
+// DOM Elements - Plugin Settings
+const settingsPluginUrl = document.getElementById('settingsPluginUrl');
+const settingsInstallPluginBtn = document.getElementById('settingsInstallPluginBtn');
+const settingsPluginsStatus = document.getElementById('settingsPluginsStatus');
+const settingsPluginsList = document.getElementById('settingsPluginsList');
+
 // DOM Elements - Permission Dialog
 const permissionDialogOverlay = document.getElementById('permissionDialogOverlay');
 const permissionToolName = document.getElementById('permissionToolName');
@@ -170,6 +181,7 @@ let isAuthEnabled = false; // true if Supabase is configured
 let isFirstMessage = true;
 let todos = [];
 let toolCalls = [];
+let activeSubagents = new Map(); // agentId → { type, description, startTime, currentTool, elapsedSeconds }
 let attachedFiles = [];
 let selectedProvider = 'claude';
 let selectedModel = 'claude-sonnet-4-5-20250514';
@@ -695,7 +707,7 @@ function renderChatMessages(messages) {
       contentDiv.textContent = msgData.content;
     } else if (msgData.class.includes('assistant')) {
       if (msgData.html) {
-        contentDiv.innerHTML = msgData.html;
+        contentDiv.innerHTML = sanitizeHtml(msgData.html);
       } else {
         renderMarkdown(contentDiv);
       }
@@ -873,6 +885,8 @@ async function loadSettings() {
     renderBrowserSettings(data.browser);
     renderInstructions(data.instructions);
     renderPermissions(data.permissions);
+    renderDocumentSettings(data.documents);
+    loadPlugins();
   } catch (err) {
     if (settingsKeysStatus) {
       settingsKeysStatus.textContent = err.message && err.message.includes('404')
@@ -1250,6 +1264,106 @@ async function savePermissions() {
     if (settingsPermissionsStatus) { settingsPermissionsStatus.textContent = err.message || 'Save failed'; settingsPermissionsStatus.classList.add('error'); }
   }
 }
+// ---- Document Generation Settings ----
+function renderDocumentSettings(documents) {
+  const docs = documents || {};
+  if (settingsDocOutputDir) settingsDocOutputDir.value = docs.outputDirectory || '';
+  if (settingsDocumentsStatus) settingsDocumentsStatus.textContent = '';
+}
+async function saveDocumentSettings() {
+  if (!window.electronAPI || typeof window.electronAPI.updateSettings !== 'function') return;
+  const body = { documents: { outputDirectory: settingsDocOutputDir ? settingsDocOutputDir.value.trim() : '' } };
+  try {
+    const data = await window.electronAPI.updateSettings(body);
+    cachedSettings.documents = data.documents;
+    if (settingsDocumentsStatus) { settingsDocumentsStatus.textContent = 'Saved.'; settingsDocumentsStatus.classList.remove('error'); }
+  } catch (err) {
+    if (settingsDocumentsStatus) { settingsDocumentsStatus.textContent = err.message || 'Save failed'; settingsDocumentsStatus.classList.add('error'); }
+  }
+}
+
+// ---- Plugin Settings ----
+async function loadPlugins() {
+  if (!window.electronAPI || typeof window.electronAPI.getPlugins !== 'function') return;
+  try {
+    const plugins = await window.electronAPI.getPlugins();
+    renderPluginsList(plugins);
+  } catch (err) {
+    if (settingsPluginsStatus) { settingsPluginsStatus.textContent = 'Failed to load plugins'; settingsPluginsStatus.classList.add('error'); }
+  }
+}
+
+function renderPluginsList(plugins) {
+  if (!settingsPluginsList) return;
+  if (!plugins || plugins.length === 0) {
+    settingsPluginsList.innerHTML = '<p style="color:var(--text-secondary);font-size:0.85rem;">No plugins installed. Install one from a Git URL above.</p>';
+    return;
+  }
+  settingsPluginsList.innerHTML = plugins.map(p => `
+    <div class="plugin-card" data-plugin-dir="${p.dirName}">
+      <div class="plugin-card-header">
+        <div class="plugin-card-info">
+          <span class="plugin-card-name">${p.name}</span>
+          <span class="plugin-card-version">v${p.version}</span>
+        </div>
+        <div class="plugin-card-actions">
+          <label class="plugin-toggle">
+            <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="togglePlugin('${p.name}', this.checked)" />
+            <span class="plugin-toggle-label">${p.enabled ? 'Enabled' : 'Disabled'}</span>
+          </label>
+          <button type="button" class="plugin-remove-btn" onclick="removePlugin('${p.dirName}', '${p.name}')" title="Remove plugin">✕</button>
+        </div>
+      </div>
+      ${p.description ? `<p class="plugin-card-desc">${p.description}</p>` : ''}
+      <div class="plugin-card-meta">
+        ${p.author ? `<span>by ${p.author}</span>` : ''}
+        ${p.category ? `<span class="plugin-card-category">${p.category}</span>` : ''}
+        ${p.hasMcp ? '<span class="plugin-badge">MCP</span>' : ''}
+        ${p.hasSkills ? '<span class="plugin-badge">Skills</span>' : ''}
+        ${p.agents && p.agents.length > 0 ? '<span class="plugin-badge">Agents</span>' : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function installPlugin() {
+  if (!settingsPluginUrl || !settingsPluginUrl.value.trim()) return;
+  const gitUrl = settingsPluginUrl.value.trim();
+  if (settingsPluginsStatus) { settingsPluginsStatus.textContent = 'Installing...'; settingsPluginsStatus.classList.remove('error'); }
+  try {
+    await window.electronAPI.installPlugin(gitUrl);
+    settingsPluginUrl.value = '';
+    if (settingsPluginsStatus) { settingsPluginsStatus.textContent = 'Plugin installed successfully.'; settingsPluginsStatus.classList.remove('error'); }
+    await loadPlugins();
+  } catch (err) {
+    if (settingsPluginsStatus) { settingsPluginsStatus.textContent = err.message || 'Install failed'; settingsPluginsStatus.classList.add('error'); }
+  }
+}
+
+async function togglePlugin(name, enabled) {
+  try {
+    if (enabled) {
+      await window.electronAPI.enablePlugin(name);
+    } else {
+      await window.electronAPI.disablePlugin(name);
+    }
+    await loadPlugins();
+  } catch (err) {
+    if (settingsPluginsStatus) { settingsPluginsStatus.textContent = err.message || 'Toggle failed'; settingsPluginsStatus.classList.add('error'); }
+  }
+}
+
+async function removePlugin(dirName, name) {
+  if (!confirm(`Remove plugin "${name}"? This will delete its files.`)) return;
+  try {
+    await window.electronAPI.removePlugin(dirName);
+    if (settingsPluginsStatus) { settingsPluginsStatus.textContent = 'Plugin removed.'; settingsPluginsStatus.classList.remove('error'); }
+    await loadPlugins();
+  } catch (err) {
+    if (settingsPluginsStatus) { settingsPluginsStatus.textContent = err.message || 'Remove failed'; settingsPluginsStatus.classList.add('error'); }
+  }
+}
+
 function showPermissionDialog(chatId, requestId, toolName, toolInput) {
   pendingPermissionRequest = { chatId, requestId };
   if (permissionToolName) permissionToolName.textContent = toolName || 'Unknown tool';
@@ -1346,6 +1460,12 @@ function setupEventListeners() {
   if (permissionAllowBtn) permissionAllowBtn.addEventListener('click', () => handlePermissionResponse('allow'));
   if (permissionDenyBtn) permissionDenyBtn.addEventListener('click', () => handlePermissionResponse('deny'));
 
+  // Document generation settings
+  if (settingsSaveDocumentsBtn) settingsSaveDocumentsBtn.addEventListener('click', saveDocumentSettings);
+
+  // Plugin settings
+  if (settingsInstallPluginBtn) settingsInstallPluginBtn.addEventListener('click', installPlugin);
+
   // File attachment buttons
   const homeAttachBtn = document.getElementById('homeAttachBtn');
   const chatAttachBtn = document.getElementById('chatAttachBtn');
@@ -1356,6 +1476,12 @@ function setupEventListeners() {
   chatAttachBtn.addEventListener('click', () => chatFileInput.click());
   homeFileInput.addEventListener('change', (e) => handleFileSelect(e, 'home'));
   chatFileInput.addEventListener('change', (e) => handleFileSelect(e, 'chat'));
+
+  // Vault picker buttons
+  const homeVaultPickerBtn = document.getElementById('homeVaultPickerBtn');
+  const chatVaultPickerBtn = document.getElementById('chatVaultPickerBtn');
+  if (homeVaultPickerBtn) homeVaultPickerBtn.addEventListener('click', () => openVaultPicker('home'));
+  if (chatVaultPickerBtn) chatVaultPickerBtn.addEventListener('click', () => openVaultPicker('chat'));
 
   // Setup dropdowns
   setupDropdowns();
@@ -1641,6 +1767,132 @@ function renderAttachedFiles(context) {
 window.removeAttachedFile = function(index, context) {
   attachedFiles.splice(index, 1);
   renderAttachedFiles(context);
+}
+
+// ==================== VAULT PICKER ====================
+
+// Open compact dropdown for picking vault assets to attach to chat
+async function openVaultPicker(context) {
+  // Close any existing picker first
+  const existing = document.querySelector('.vault-picker-dropdown');
+  if (existing) { existing.remove(); return; }
+
+  const api = window.electronAPI || window.webAPI;
+  if (!api?.getVaultAssets) return;
+
+  // Position near the button
+  const btnId = context === 'home' ? 'homeVaultPickerBtn' : 'chatVaultPickerBtn';
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+
+  const rect = btn.getBoundingClientRect();
+
+  // Create dropdown
+  const dropdown = document.createElement('div');
+  dropdown.className = 'vault-picker-dropdown';
+  dropdown.style.left = rect.left + 'px';
+  dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+
+  dropdown.innerHTML = `
+    <div class="vault-picker-header">
+      <input type="text" class="vault-picker-search" placeholder="Search vault assets..." />
+    </div>
+    <div class="vault-picker-list">
+      <div class="vault-picker-loading">Loading...</div>
+    </div>
+  `;
+
+  document.body.appendChild(dropdown);
+
+  const searchInput = dropdown.querySelector('.vault-picker-search');
+  const listEl = dropdown.querySelector('.vault-picker-list');
+
+  // Load assets
+  let allAssets = [];
+  try {
+    const result = await api.getVaultAssets({ sort: 'created_at', dir: 'desc', limit: 50 });
+    allAssets = Array.isArray(result) ? result : (result.assets || []);
+  } catch (err) {
+    console.error('[VAULT PICKER] Load error:', err);
+    listEl.innerHTML = '<div class="vault-picker-empty">Failed to load assets</div>';
+    return;
+  }
+
+  function renderList(filter = '') {
+    const filtered = filter
+      ? allAssets.filter(a => (a.display_name || a.file_name || '').toLowerCase().includes(filter.toLowerCase()))
+      : allAssets;
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = `<div class="vault-picker-empty">${filter ? 'No matching assets' : 'No assets in vault'}</div>`;
+      return;
+    }
+
+    listEl.innerHTML = filtered.map(asset => {
+      const name = asset.display_name || asset.file_name || 'Untitled';
+      const size = asset.file_size ? formatVaultPickerSize(asset.file_size) : '';
+      const isImage = (asset.file_type || '').startsWith('image/');
+      const icon = isImage
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+      const sourceTag = asset.source && asset.source !== 'upload'
+        ? `<span class="vault-picker-source">${asset.source === 'ai_generated' ? 'AI' : asset.source}</span>`
+        : '';
+      return `<div class="vault-picker-item" data-id="${asset.id}">
+        <div class="vault-picker-icon">${icon}</div>
+        <div class="vault-picker-info">
+          <div class="vault-picker-name">${escHtml(name)}</div>
+          <div class="vault-picker-meta">${size}${sourceTag}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Click handlers
+    listEl.querySelectorAll('.vault-picker-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const id = item.dataset.id;
+        const asset = filtered.find(a => a.id === id);
+        if (!asset) return;
+        // Check if already attached
+        if (attachedFiles.some(f => f.id === asset.id)) {
+          dropdown.remove();
+          return;
+        }
+        attachedFiles.push({
+          id: asset.id,
+          name: asset.display_name || asset.file_name,
+          type: asset.file_type,
+          size: asset.file_size,
+          storagePath: asset.storage_path
+        });
+        renderAttachedFiles(context);
+        dropdown.remove();
+      });
+    });
+  }
+
+  renderList();
+
+  // Search filter
+  searchInput.addEventListener('input', () => renderList(searchInput.value.trim()));
+  searchInput.focus();
+
+  // Close on click outside
+  function onClickOutside(e) {
+    if (!dropdown.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+      dropdown.remove();
+      document.removeEventListener('click', onClickOutside);
+    }
+  }
+  // Delay to avoid the opening click triggering close
+  setTimeout(() => document.addEventListener('click', onClickOutside), 0);
+}
+
+function formatVaultPickerSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 // Toggle sidebar (right sidebar)
@@ -2012,6 +2264,15 @@ async function handleSendMessage(e) {
               hasContent = true;
             } else if (data.type === 'permission_request') {
               showPermissionDialog(data.chatId, data.requestId, data.toolName, data.toolInput);
+            } else if (data.type === 'subagent_start') {
+              addSubagent(data.agent_id, data.agent_type, data.description);
+              addInlineSubagentCard(contentDiv, data.agent_id, data.agent_type, data.description);
+              hasContent = true;
+            } else if (data.type === 'tool_progress') {
+              updateSubagentProgress(data.parent_tool_use_id || data.tool_use_id, data.tool_name, data.elapsed_time_seconds);
+            } else if (data.type === 'subagent_stop') {
+              completeSubagent(data.agent_id, data.result);
+              updateInlineSubagentComplete(data.agent_id);
             } else if (data.type === 'assistant' && data.message) {
               if (data.message.content && Array.isArray(data.message.content)) {
                 for (const block of data.message.content) {
@@ -2284,6 +2545,8 @@ window.startNewChat = function() {
   stepsCount.textContent = '0 steps';
   toolCallsList.innerHTML = '';
   emptyTools.style.display = 'block';
+  activeSubagents.clear();
+  clearSubagentsSidebar();
   clearArtifacts();
 
   // Switch back to home view
@@ -2326,7 +2589,7 @@ function renderMarkdownContainer(container) {
     gfm: true
   });
 
-  container.innerHTML = marked.parse(rawContent);
+  container.innerHTML = sanitizeHtml(marked.parse(rawContent));
 }
 
 // Legacy function for restoring saved messages
@@ -2345,7 +2608,12 @@ function renderMarkdown(contentDiv) {
     contentDiv.appendChild(markdownContainer);
   }
 
-  markdownContainer.innerHTML = marked.parse(rawContent);
+  markdownContainer.innerHTML = sanitizeHtml(marked.parse(rawContent));
+}
+
+function sanitizeHtml(html) {
+  if (typeof DOMPurify === 'undefined') return html || '';
+  return DOMPurify.sanitize(html || '');
 }
 
 function formatToolPreview(toolInput) {
@@ -2428,6 +2696,52 @@ function updateInlineToolResult(toolId, result) {
           img.src = 'data:image/png;base64,' + imgData;
           img.alt = 'Browser screenshot';
           outputContent.appendChild(img);
+          // Save to Vault button for screenshots
+          if (window.electronAPI?.uploadVaultAsset) {
+            const vaultBtn = document.createElement('button');
+            vaultBtn.className = 'artifact-pill vault-save-pill';
+            vaultBtn.style.marginTop = '6px';
+            vaultBtn.textContent = 'Save to Vault';
+            vaultBtn.addEventListener('click', async () => {
+              try {
+                vaultBtn.disabled = true;
+                vaultBtn.textContent = 'Saving...';
+                const binary = atob(imgData);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const blob = new Blob([bytes], { type: 'image/png' });
+                const filename = 'screenshot_' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
+                const file = new File([blob], filename, { type: 'image/png' });
+                await window.electronAPI.uploadVaultAsset(file, undefined, 'ai_generated');
+                vaultBtn.textContent = 'Saved!';
+                setTimeout(() => { vaultBtn.textContent = 'Save to Vault'; vaultBtn.disabled = false; }, 2000);
+              } catch (err) {
+                console.error('[VAULT] Save screenshot error:', err);
+                vaultBtn.textContent = 'Save to Vault';
+                vaultBtn.disabled = false;
+              }
+            });
+            outputContent.appendChild(vaultBtn);
+          }
+          outputSection.style.display = 'block';
+          return;
+        }
+      }
+
+      // Check for document generation tool results
+      if (['create_excel', 'create_powerpoint', 'create_pdf'].includes(toolName) && result && typeof result === 'object') {
+        const docResult = typeof result === 'string' ? JSON.parse(result) : result;
+        if (docResult.filePath) {
+          const filename = docResult.filePath.split('/').pop().split('\\').pop();
+          const sizeStr = docResult.fileSize ? (docResult.fileSize < 1024 ? docResult.fileSize + ' B' : (docResult.fileSize / 1024).toFixed(1) + ' KB') : '';
+          const iconMap = { create_excel: '\u{1F4CA}', create_powerpoint: '\u{1F4DD}', create_pdf: '\u{1F4C4}' };
+          const icon = iconMap[toolName] || '\u{1F4C1}';
+          outputContent.innerHTML = '';
+          const card = document.createElement('div');
+          card.className = 'document-download-card';
+          card.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border-color,#333);border-radius:8px;background:var(--input-bg,#1e1e1e);margin:4px 0;';
+          card.innerHTML = `<span style="font-size:1.6rem">${icon}</span><div style="flex:1;min-width:0"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filename}</div>${sizeStr ? `<div style="font-size:0.8rem;opacity:0.6">${sizeStr}</div>` : ''}</div><a href="${window.electronAPI.getDocumentUrl(filename)}" target="_blank" download style="padding:6px 14px;border-radius:6px;background:var(--accent-color,#6366f1);color:#fff;text-decoration:none;font-size:0.85rem;white-space:nowrap">Download</a>`;
+          outputContent.appendChild(card);
           outputSection.style.display = 'block';
           return;
         }
@@ -2554,6 +2868,165 @@ function updateToolCallResult(toolId, result) {
       outputSection.style.display = 'block';
     }
   }
+}
+
+// ── Sub-Agent UI functions ──────────────────────────────────────────
+
+function addSubagent(agentId, agentType, description) {
+  const entry = {
+    id: agentId,
+    type: agentType || 'general',
+    description: description || '',
+    startTime: Date.now(),
+    currentTool: null,
+    elapsedSeconds: 0
+  };
+  activeSubagents.set(agentId, entry);
+
+  // Show the sidebar section
+  const section = document.getElementById('subagentsSection');
+  if (section) section.style.display = '';
+
+  // Update count
+  updateSubagentCount();
+
+  // Add sidebar entry
+  const list = document.getElementById('subagentsList');
+  if (!list) return;
+
+  const div = document.createElement('div');
+  div.className = 'subagent-item running';
+  div.dataset.agentId = agentId;
+  div.innerHTML = `
+    <div class="subagent-header">
+      <div class="subagent-icon running">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"></path>
+        </svg>
+      </div>
+      <div class="subagent-info">
+        <div class="subagent-type">${escapeHtml(entry.type)}</div>
+        <div class="subagent-desc">${escapeHtml(entry.description)}</div>
+      </div>
+    </div>
+    <div class="subagent-progress">
+      <span class="subagent-tool">Starting...</span>
+      <span class="subagent-elapsed">0s</span>
+    </div>
+  `;
+  list.appendChild(div);
+}
+
+function updateSubagentProgress(agentId, toolName, elapsedSeconds) {
+  const entry = activeSubagents.get(agentId);
+  if (entry) {
+    entry.currentTool = toolName;
+    if (elapsedSeconds != null) entry.elapsedSeconds = elapsedSeconds;
+  }
+
+  // Update sidebar
+  const div = document.querySelector(`.subagent-item[data-agent-id="${agentId}"]`);
+  if (div) {
+    const toolEl = div.querySelector('.subagent-tool');
+    const elapsedEl = div.querySelector('.subagent-elapsed');
+    if (toolEl && toolName) toolEl.textContent = toolName;
+    if (elapsedEl && elapsedSeconds != null) elapsedEl.textContent = formatElapsed(elapsedSeconds);
+  }
+
+  // Update inline card
+  const card = document.querySelector(`.inline-subagent-card[data-agent-id="${agentId}"]`);
+  if (card) {
+    const toolEl = card.querySelector('.subagent-card-tool');
+    const elapsedEl = card.querySelector('.subagent-card-elapsed');
+    if (toolEl && toolName) toolEl.textContent = toolName;
+    if (elapsedEl && elapsedSeconds != null) elapsedEl.textContent = formatElapsed(elapsedSeconds);
+  }
+}
+
+function completeSubagent(agentId) {
+  const entry = activeSubagents.get(agentId);
+  if (entry) {
+    entry.elapsedSeconds = (Date.now() - entry.startTime) / 1000;
+  }
+  activeSubagents.delete(agentId);
+
+  // Update sidebar entry
+  const div = document.querySelector(`.subagent-item[data-agent-id="${agentId}"]`);
+  if (div) {
+    div.classList.remove('running');
+    div.classList.add('completed');
+    const icon = div.querySelector('.subagent-icon');
+    if (icon) {
+      icon.className = 'subagent-icon completed';
+      icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    }
+    const toolEl = div.querySelector('.subagent-tool');
+    if (toolEl) toolEl.textContent = 'Done';
+    const elapsedEl = div.querySelector('.subagent-elapsed');
+    if (elapsedEl && entry) elapsedEl.textContent = formatElapsed(entry.elapsedSeconds);
+  }
+
+  updateSubagentCount();
+}
+
+function addInlineSubagentCard(contentDiv, agentId, agentType, description) {
+  const card = document.createElement('div');
+  card.className = 'inline-subagent-card';
+  card.dataset.agentId = agentId;
+  card.innerHTML = `
+    <div class="subagent-card-header">
+      <span class="subagent-card-icon running"></span>
+      <span class="subagent-card-type">${escapeHtml(agentType || 'general')}</span>
+      <span class="subagent-card-desc">${escapeHtml(description || '')}</span>
+    </div>
+    <div class="subagent-card-progress">
+      <span class="subagent-card-tool">Starting...</span>
+      <span class="subagent-card-elapsed">0s</span>
+    </div>
+  `;
+  contentDiv.appendChild(card);
+
+  // Increment chunk counter so next text creates a new markdown container
+  const currentChunk = parseInt(contentDiv.dataset.currentChunk || '0');
+  contentDiv.dataset.currentChunk = currentChunk + 1;
+}
+
+function updateInlineSubagentComplete(agentId) {
+  const card = document.querySelector(`.inline-subagent-card[data-agent-id="${agentId}"]`);
+  if (card) {
+    const icon = card.querySelector('.subagent-card-icon');
+    if (icon) {
+      icon.classList.remove('running');
+      icon.classList.add('completed');
+    }
+    const toolEl = card.querySelector('.subagent-card-tool');
+    if (toolEl) toolEl.textContent = 'Completed';
+  }
+}
+
+function updateSubagentCount() {
+  const countEl = document.getElementById('subagentsCount');
+  if (!countEl) return;
+  const running = activeSubagents.size;
+  const total = document.querySelectorAll('.subagent-item').length;
+  countEl.textContent = running > 0 ? `${running} running` : `${total} agent${total !== 1 ? 's' : ''}`;
+}
+
+function clearSubagentsSidebar() {
+  const list = document.getElementById('subagentsList');
+  if (list) list.innerHTML = '';
+  const section = document.getElementById('subagentsSection');
+  if (section) section.style.display = 'none';
+  const countEl = document.getElementById('subagentsCount');
+  if (countEl) countEl.textContent = '0 agents';
+}
+
+function formatElapsed(seconds) {
+  if (seconds < 60) return Math.round(seconds) + 's';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}m ${secs}s`;
 }
 
 // Toggle tool call expansion in sidebar
@@ -3739,16 +4212,47 @@ function deriveTitle(lang, content) {
 
 function injectArtifactPill(contentDiv, artifact) {
   const codeBlocks = contentDiv.querySelectorAll('pre code');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'artifact-pill-row';
+  wrapper.style.cssText = 'display:flex;gap:6px;align-items:center;margin:6px 0';
   const pill = document.createElement('button');
   pill.className = 'artifact-pill';
   pill.textContent = 'Open in editor: ' + artifact.title;
   pill.dataset.artifactId = artifact.id;
   pill.addEventListener('click', () => openArtifactPanel(artifact.id));
+  wrapper.appendChild(pill);
+
+  // Save to Vault button
+  if (window.electronAPI?.uploadVaultAsset) {
+    const vaultBtn = document.createElement('button');
+    vaultBtn.className = 'artifact-pill vault-save-pill';
+    vaultBtn.textContent = 'Save to Vault';
+    vaultBtn.addEventListener('click', async () => {
+      try {
+        vaultBtn.disabled = true;
+        vaultBtn.textContent = 'Saving...';
+        const ext = artifact.language ? (({ python: '.py', javascript: '.js', typescript: '.ts', html: '.html', css: '.css', json: '.json', bash: '.sh', shell: '.sh', sql: '.sql', rust: '.rs', go: '.go', java: '.java', ruby: '.rb', php: '.php', c: '.c', cpp: '.cpp', yaml: '.yaml', toml: '.toml', xml: '.xml' })[artifact.language] || '.txt') : '.txt';
+        const filename = (artifact.title || 'snippet').replace(/[^a-zA-Z0-9._-]/g, '_') + (artifact.title.includes('.') ? '' : ext);
+        const blob = new Blob([artifact.content], { type: 'text/plain' });
+        const file = new File([blob], filename, { type: 'text/plain' });
+        await window.electronAPI.uploadVaultAsset(file, undefined, 'ai_generated');
+        vaultBtn.textContent = 'Saved!';
+        setTimeout(() => { vaultBtn.textContent = 'Save to Vault'; vaultBtn.disabled = false; }, 2000);
+      } catch (err) {
+        console.error('[VAULT] Save artifact error:', err);
+        vaultBtn.textContent = 'Save to Vault';
+        vaultBtn.disabled = false;
+        alert('Save to Vault failed: ' + err.message);
+      }
+    });
+    wrapper.appendChild(vaultBtn);
+  }
+
   const lastBlock = codeBlocks[codeBlocks.length - 1];
   if (lastBlock && lastBlock.closest('pre')) {
-    lastBlock.closest('pre').insertAdjacentElement('afterend', pill);
+    lastBlock.closest('pre').insertAdjacentElement('afterend', wrapper);
   } else {
-    contentDiv.appendChild(pill);
+    contentDiv.appendChild(wrapper);
   }
 }
 
@@ -3827,7 +4331,7 @@ function refreshEditorContent() {
   if (art.type === 'code') {
     if (codeEditor) { codeEditor.value = content; updateLineNumbers(); }
   } else {
-    if (docEditor) docEditor.innerHTML = marked.parse(content);
+    if (docEditor) docEditor.innerHTML = sanitizeHtml(marked.parse(content));
   }
 }
 
@@ -4067,8 +4571,8 @@ async function loadVaultContents() {
       })
     ]);
 
-    const folders = foldersRes.folders || [];
-    const assets = assetsRes.assets || [];
+    const folders = Array.isArray(foldersRes) ? foldersRes : [];
+    const assets = Array.isArray(assetsRes) ? assetsRes : [];
 
     renderVaultBreadcrumbs();
     renderVaultGrid(folders, assets);
@@ -4167,7 +4671,7 @@ async function renderVaultBreadcrumbs() {
   if (!window.electronAPI?.getVaultBreadcrumbs) return;
   try {
     const res = await window.electronAPI.getVaultBreadcrumbs(currentVaultFolderId);
-    const crumbs = res.breadcrumbs || [];
+    const crumbs = Array.isArray(res) ? res : [];
     crumbs.forEach(crumb => {
       const sep = document.createElement('span');
       sep.className = 'vault-crumb-sep';
@@ -4231,7 +4735,7 @@ function showVaultContextMenu(e, type, item) {
 
   const actions = type === 'folder'
     ? [['Rename', 'rename'], ['Delete', 'delete']]
-    : [['Open', 'open'], ['Rename', 'rename'], ['Download', 'download'], ['Delete', 'delete']];
+    : [['Open', 'open'], ['Attach to Chat', 'attach'], ['Rename', 'rename'], ['Download', 'download'], ['Delete', 'delete']];
 
   actions.forEach(([label, action]) => {
     const btn = document.createElement('div');
@@ -4276,6 +4780,22 @@ async function handleAssetAction(action, asset) {
   if (!window.electronAPI) return;
   if (action === 'open') {
     openAssetPreview(asset);
+  } else if (action === 'attach') {
+    attachedFiles.push({
+      id: asset.id,
+      name: asset.display_name || asset.file_name,
+      type: asset.file_type,
+      size: asset.file_size,
+      storagePath: asset.storage_path
+    });
+    // Switch to chat view and render the attached file
+    if (isFirstMessage) {
+      showView('home');
+      renderAttachedFiles('home');
+    } else {
+      showView('chat');
+      renderAttachedFiles('chat');
+    }
   } else if (action === 'rename') {
     const name = prompt('New name:', asset.display_name || asset.file_name);
     if (!name || !name.trim()) return;

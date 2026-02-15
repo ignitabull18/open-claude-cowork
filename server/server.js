@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -13,7 +14,7 @@ import { getPublicConfig } from './supabase/client.js';
 import * as chatStore from './supabase/chat-store.js';
 import * as sessionStore from './supabase/session-store.js';
 import * as storage from './supabase/storage.js';
-import { searchSimilar, embedMessage } from './supabase/embeddings.js';
+import { searchSimilar, embedMessage, embedAttachment } from './supabase/embeddings.js';
 import { setupCronJobs, startEmbeddingCron } from './supabase/cron.js';
 import * as reportStore from './supabase/report-store.js';
 import * as jobStore from './supabase/job-store.js';
@@ -21,6 +22,8 @@ import * as taskStore from './supabase/task-store.js';
 import * as vaultStore from './supabase/vault-store.js';
 import { startScheduler, triggerJob } from './job-scheduler.js';
 import { BrowserServer, createBrowserMcpServer } from './browser/index.js';
+import { createDocumentMcpServer } from './documents/index.js';
+import { PluginManager } from './plugins/plugin-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,6 +31,24 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const USER_SETTINGS_PATH = path.join(__dirname, 'user-settings.json');
+const DEFAULT_CORS_ORIGINS = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001'
+];
+
+const configuredOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
+  : [];
+const allowedOrigins = new Set(configuredOrigins.length ? configuredOrigins : DEFAULT_CORS_ORIGINS);
+
+function isOriginAllowed(origin) {
+  if (!origin) return true; // file:// and non-browser calls
+  if (origin === 'null') return true; // file:// access from local apps
+  if (allowedOrigins.has('*')) return true;
+  return allowedOrigins.has(origin);
+}
 
 /** Load user-settings from disk; apply API keys to process.env so SDKs use them. */
 function loadUserSettings() {
@@ -116,6 +137,16 @@ const BROWSER_TOOL_NAMES = [
   'browser_click', 'browser_type', 'browser_press', 'browser_select',
   'browser_wait', 'browser_tabs', 'browser_switch_tab', 'browser_new_tab',
   'browser_close_tab', 'browser_back', 'browser_forward', 'browser_reload'
+];
+
+// Document generation module state
+let documentMcpServer = null;
+
+// Plugin system
+let pluginManager = null;
+
+const DOCUMENT_TOOL_NAMES = [
+  'create_excel', 'create_powerpoint', 'create_pdf', 'list_generated_files'
 ];
 
 /**
@@ -290,6 +321,14 @@ function readUserSettingsFile() {
   if (!data.permissions) {
     data.permissions = { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true };
   }
+  // Ensure documents settings have defaults
+  if (!data.documents) {
+    data.documents = { outputDirectory: path.join(os.homedir(), 'Documents', 'generated') };
+  }
+  // Ensure plugins settings have defaults
+  if (!data.plugins) {
+    data.plugins = { enabled: [], installed: [] };
+  }
   return data;
 }
 
@@ -343,11 +382,24 @@ function buildMcpServers(composioSession) {
     mcpServers.browser = browserMcpServer;
   }
 
+  // Add document generation MCP server
+  if (documentMcpServer) {
+    mcpServers.documents = documentMcpServer;
+  }
+
   // Add DataForSEO MCP servers (official 9-API + custom 4-API)
   const dfsConfig = getDataforseoMcpConfig();
   if (dfsConfig) {
     mcpServers.dataforseo = { type: 'local', ...dfsConfig.official };
     mcpServers.dataforseo_extra = { type: 'local', ...dfsConfig.extra };
+  }
+
+  // Add MCP servers from enabled plugins
+  if (pluginManager) {
+    const pluginServers = pluginManager.getEnabledMcpServers();
+    for (const [name, config] of Object.entries(pluginServers)) {
+      mcpServers[name] = config;
+    }
   }
 
   const { mcpServers: userList } = readUserSettingsFile();
@@ -395,7 +447,16 @@ function updateOpencodeConfig(mcpServers) {
 }
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS policy'));
+  },
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json());
 
 // Helper: check if Supabase is configured
@@ -623,6 +684,17 @@ app.post('/api/vault/assets/upload', requireAuth, upload.single('file'), async (
     const source = req.body.source || 'upload';
     const attachment = await storage.uploadVaultFile(req.user.id, req.file, folderId, source);
     res.json(attachment);
+
+    // Embed text-based files for semantic search (non-blocking)
+    const mime = req.file.mimetype || '';
+    if (mime.startsWith('text/') || mime === 'application/json' || mime === 'application/javascript') {
+      const textContent = req.file.buffer?.toString('utf-8');
+      if (textContent) {
+        embedAttachment(attachment.id, textContent, req.user.id).catch(err =>
+          console.error('[VAULT] Embedding error:', err.message)
+        );
+      }
+    }
   } catch (err) {
     console.error('[VAULT] Upload error:', err);
     res.status(500).json({ error: err.message });
@@ -1156,7 +1228,8 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     message,
     chatId,
     provider: providerName = 'claude',
-    model = null
+    model = null,
+    agents
   } = req.body;
 
   const userId = req.user.id;
@@ -1240,13 +1313,33 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     let toolCallsAccumulated = [];
 
     // Build allowed tools list — include browser tools when browser is enabled
-    const allowedTools = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'Skill'];
+    const allowedTools = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'Skill', 'Task', 'TaskOutput'];
     if (browserMcpServer) {
       allowedTools.push(...BROWSER_TOOL_NAMES);
     }
+    if (documentMcpServer) {
+      allowedTools.push(...DOCUMENT_TOOL_NAMES);
+    }
 
-    // Build system prompt from user instructions
-    const systemPromptAppend = buildSystemPrompt();
+    // Build system prompt from user instructions + plugin skills
+    let systemPromptAppend = buildSystemPrompt();
+    if (pluginManager) {
+      const pluginPrompt = pluginManager.getSystemPromptAdditions();
+      if (pluginPrompt) {
+        systemPromptAppend = systemPromptAppend
+          ? systemPromptAppend + '\n\n' + pluginPrompt
+          : pluginPrompt;
+      }
+    }
+
+    // Merge plugin agent definitions with request-supplied agents
+    let mergedAgents = agents || {};
+    if (pluginManager) {
+      const pluginAgents = pluginManager.getAgentDefinitions();
+      if (Object.keys(pluginAgents).length > 0) {
+        mergedAgents = { ...pluginAgents, ...mergedAgents };
+      }
+    }
 
     // Read permission settings
     const settingsData = readUserSettingsFile();
@@ -1264,7 +1357,8 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         maxTurns: 100,
         systemPromptAppend: systemPromptAppend || undefined,
         permissionMode: permissions.mode || 'bypassPermissions',
-        allowedDirectories: permissions.allowedDirectories || []
+        allowedDirectories: permissions.allowedDirectories || [],
+        agents: Object.keys(mergedAgents).length > 0 ? mergedAgents : undefined
       })) {
         // Accumulate text content
         if (chunk.type === 'text' && chunk.content) {
@@ -1406,7 +1500,7 @@ app.get('/api/providers', (_req, res) => {
 });
 
 // Settings: get (masked keys + mcpServers)
-app.get('/api/settings', (_req, res) => {
+app.get('/api/settings', requireAuth, (_req, res) => {
   try {
     const data = readUserSettingsFile();
     res.json({
@@ -1420,7 +1514,8 @@ app.get('/api/settings', (_req, res) => {
       mcpServers: data.mcpServers,
       browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 },
       instructions: data.instructions || { global: '', folders: [] },
-      permissions: data.permissions || { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true }
+      permissions: data.permissions || { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true },
+      documents: data.documents || { outputDirectory: path.join(os.homedir(), 'Documents', 'generated') }
     });
   } catch (err) {
     console.error('[SETTINGS] GET error:', err);
@@ -1429,7 +1524,7 @@ app.get('/api/settings', (_req, res) => {
 });
 
 // Settings: put (merge and persist; apply keys; clear Composio/Smithery caches when keys change)
-app.put('/api/settings', (req, res) => {
+app.put('/api/settings', requireAuth, (req, res) => {
   try {
     const data = readUserSettingsFile();
     const body = req.body || {};
@@ -1509,6 +1604,14 @@ app.put('/api/settings', (req, res) => {
       }
     }
 
+    // Handle documents settings
+    if (body.documents && typeof body.documents === 'object') {
+      if (!data.documents) data.documents = { outputDirectory: path.join(os.homedir(), 'Documents', 'generated') };
+      if (body.documents.outputDirectory !== undefined) {
+        data.documents.outputDirectory = String(body.documents.outputDirectory || '').trim() || path.join(os.homedir(), 'Documents', 'generated');
+      }
+    }
+
     saveUserSettings(data);
 
     // Re-initialize browser if browser settings changed
@@ -1516,6 +1619,11 @@ app.put('/api/settings', (req, res) => {
       initializeBrowser().catch(err => {
         console.error('[SETTINGS] Browser init error:', err.message);
       });
+    }
+
+    // Re-initialize documents if documents settings changed
+    if (body.documents) {
+      initializeDocuments();
     }
 
     // Apply API keys to process.env for next requests
@@ -1549,7 +1657,8 @@ app.put('/api/settings', (req, res) => {
       mcpServers: data.mcpServers,
       browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 },
       instructions: data.instructions || { global: '', folders: [] },
-      permissions: data.permissions || { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true }
+      permissions: data.permissions || { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true },
+      documents: data.documents || { outputDirectory: path.join(os.homedir(), 'Documents', 'generated') }
     });
   } catch (err) {
     console.error('[SETTINGS] PUT error:', err);
@@ -1611,8 +1720,145 @@ async function initializeBrowser() {
   }
 }
 
+// ==================== DOCUMENT GENERATION ====================
+
+/**
+ * Initialize document generation MCP server based on user settings.
+ */
+function initializeDocuments() {
+  const data = readUserSettingsFile();
+  const docSettings = data.documents || {};
+  const outputDir = docSettings.outputDirectory || path.join(os.homedir(), 'Documents', 'generated');
+
+  // Ensure output directory exists
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  documentMcpServer = createDocumentMcpServer(outputDir);
+  console.log('[DOCUMENTS] Document generation ready, output:', outputDir);
+
+  // Refresh MCP config if Composio session exists
+  if (defaultComposioSession) {
+    const mcpServers = buildMcpServers(defaultComposioSession);
+    updateOpencodeConfig(mcpServers);
+  }
+}
+
+// List generated documents
+app.get('/api/documents', requireAuth, (_req, res) => {
+  try {
+    const data = readUserSettingsFile();
+    const outputDir = data.documents?.outputDirectory || path.join(os.homedir(), 'Documents', 'generated');
+    if (!fs.existsSync(outputDir)) {
+      return res.json({ files: [], outputDirectory: outputDir });
+    }
+    const files = fs.readdirSync(outputDir)
+      .filter(name => /\.(xlsx|pptx|pdf)$/i.test(name))
+      .map(name => {
+        const fullPath = path.join(outputDir, name);
+        const stats = fs.statSync(fullPath);
+        const ext = path.extname(name).toLowerCase();
+        const typeMap = { '.xlsx': 'excel', '.pptx': 'powerpoint', '.pdf': 'pdf' };
+        return { name, size: stats.size, modified: stats.mtime.toISOString(), type: typeMap[ext] || 'unknown' };
+      });
+    res.json({ files, outputDirectory: outputDir });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Download a generated document
+app.get('/api/documents/:filename', requireAuth, (req, res) => {
+  try {
+    const data = readUserSettingsFile();
+    const outputDir = data.documents?.outputDirectory || path.join(os.homedir(), 'Documents', 'generated');
+    const safeName = path.basename(req.params.filename); // prevent path traversal
+    const filePath = path.join(outputDir, safeName);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    res.download(filePath, safeName);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== PLUGIN SYSTEM ====================
+
+/** Initialize the plugin manager. */
+function initializePlugins() {
+  try {
+    pluginManager = new PluginManager({
+      readSettings: readUserSettingsFile,
+      writeSettings: saveUserSettings
+    });
+    const plugins = pluginManager.listPlugins();
+    const enabled = plugins.filter(p => p.enabled);
+    console.log(`[PLUGINS] Initialized — ${plugins.length} installed, ${enabled.length} enabled`);
+  } catch (err) {
+    console.error('[PLUGINS] Initialization failed:', err.message);
+  }
+}
+
+// List all plugins with status
+app.get('/api/plugins', requireAuth, (_req, res) => {
+  if (!pluginManager) return res.json({ plugins: [] });
+  try {
+    res.json({ plugins: pluginManager.listPlugins() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Enable a plugin
+app.post('/api/plugins/:name/enable', requireAuth, (req, res) => {
+  if (!pluginManager) return res.status(503).json({ error: 'Plugin system not initialized' });
+  try {
+    pluginManager.enablePlugin(req.params.name);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Disable a plugin
+app.post('/api/plugins/:name/disable', requireAuth, (req, res) => {
+  if (!pluginManager) return res.status(503).json({ error: 'Plugin system not initialized' });
+  try {
+    pluginManager.disablePlugin(req.params.name);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Install a plugin from a git URL
+app.post('/api/plugins/install', requireAuth, (req, res) => {
+  if (!pluginManager) return res.status(503).json({ error: 'Plugin system not initialized' });
+  const { url, dirName } = req.body;
+  if (!url) return res.status(400).json({ error: 'Git URL is required' });
+  try {
+    const result = pluginManager.installPlugin(url, dirName);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Remove an installed plugin
+app.delete('/api/plugins/:name', requireAuth, (req, res) => {
+  if (!pluginManager) return res.status(503).json({ error: 'Plugin system not initialized' });
+  try {
+    pluginManager.removePlugin(req.params.name);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Browser status endpoint
-app.get('/api/browser/status', (_req, res) => {
+app.get('/api/browser/status', requireAuth, (_req, res) => {
   const data = readUserSettingsFile();
   const settings = data.browser || {};
   res.json({
@@ -1646,6 +1892,8 @@ await initializeComposioSession();
 await initializeSmitheryConnection();
 initializeDataforseoConfig();
 await initializeBrowser();
+initializeDocuments();
+initializePlugins();
 
 // Start Supabase cron jobs + job scheduler if configured
 if (isSupabaseConfigured()) {

@@ -78,7 +78,8 @@ export class ClaudeProvider extends BaseProvider {
       maxTurns = this.defaultMaxTurns,
       systemPromptAppend,
       permissionMode = this.permissionMode,
-      allowedDirectories = []
+      allowedDirectories = [],
+      agents
     } = params;
 
     // Build query options - exact match to server.js structure
@@ -89,6 +90,12 @@ export class ClaudeProvider extends BaseProvider {
       permissionMode,
       settingSources: ['user', 'project']  // Enable Skills from filesystem
     };
+
+    // Pass sub-agent definitions to the SDK when provided
+    if (agents && Object.keys(agents).length > 0) {
+      queryOptions.agents = agents;
+      console.log('[Claude] Sub-agent types registered:', Object.keys(agents).join(', '));
+    }
 
     // Append user instructions to system prompt when configured
     if (systemPromptAppend) {
@@ -144,6 +151,9 @@ export class ClaudeProvider extends BaseProvider {
     }
 
     try {
+    // Track active sub-agent tool_use IDs so we can emit subagent_stop on their tool_result
+    const activeSubagentIds = new Set();
+
     // Stream responses from Claude Agent SDK
     // We interleave SDK chunks with permission queue events so permission_request
     // events reach the SSE stream while the SDK waits for canUseTool to resolve.
@@ -222,20 +232,35 @@ export class ClaudeProvider extends BaseProvider {
         // Handle assistant messages - extract text and tool_use blocks
         if (chunk.type === 'assistant' && chunk.message && chunk.message.content) {
           const content = chunk.message.content;
+          const parentToolUseId = chunk.parent_tool_use_id || null;
           if (Array.isArray(content)) {
             for (const block of content) {
               if (block.type === 'text' && block.text) {
                 yield {
                   type: 'text',
                   content: block.text,
+                  parent_tool_use_id: parentToolUseId,
                   provider: this.name
                 };
               } else if (block.type === 'tool_use') {
+                // Detect sub-agent spawn via Task tool
+                if (block.name === 'Task') {
+                  yield {
+                    type: 'subagent_start',
+                    agent_id: block.id,
+                    agent_type: block.input?.subagent_type || block.input?.type || 'general',
+                    description: block.input?.description || block.input?.prompt?.slice(0, 100) || '',
+                    provider: this.name
+                  };
+                  activeSubagentIds.add(block.id);
+                  console.log('[Claude] Sub-agent started:', block.id, block.input?.subagent_type);
+                }
                 yield {
                   type: 'tool_use',
                   name: block.name,
                   input: block.input,
                   id: block.id,
+                  parent_tool_use_id: parentToolUseId,
                   provider: this.name
                 };
                 console.log('[Claude] Tool use:', block.name);
@@ -245,12 +270,37 @@ export class ClaudeProvider extends BaseProvider {
           continue;
         }
 
+        // Handle tool progress events from sub-agents
+        if (chunk.type === 'tool_progress') {
+          yield {
+            type: 'tool_progress',
+            tool_use_id: chunk.tool_use_id,
+            tool_name: chunk.tool_name,
+            parent_tool_use_id: chunk.parent_tool_use_id || null,
+            elapsed_time_seconds: chunk.elapsed_time_seconds,
+            provider: this.name
+          };
+          continue;
+        }
+
         // Handle tool results
         if (chunk.type === 'tool_result' || chunk.type === 'result') {
+          const toolUseId = chunk.tool_use_id;
+          // Detect sub-agent completion — tool_result for a Task tool_use
+          if (toolUseId && activeSubagentIds.has(toolUseId)) {
+            activeSubagentIds.delete(toolUseId);
+            yield {
+              type: 'subagent_stop',
+              agent_id: toolUseId,
+              result: chunk.result || chunk.content || chunk,
+              provider: this.name
+            };
+            console.log('[Claude] Sub-agent completed:', toolUseId);
+          }
           yield {
             type: 'tool_result',
             result: chunk.result || chunk.content || chunk,
-            tool_use_id: chunk.tool_use_id,
+            tool_use_id: toolUseId,
             provider: this.name
           };
           continue;

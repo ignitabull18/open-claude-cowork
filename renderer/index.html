@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="web-api.js"></script>
   <script src="auth.js"></script>
@@ -166,6 +167,13 @@
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                   </svg>
                 </button>
+                <button type="button" class="control-btn vault-picker-btn" id="homeVaultPickerBtn" title="Attach from Vault">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="6" width="20" height="14" rx="2"/>
+                    <path d="M2 10h20"/>
+                    <path d="M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
                 <button type="button" class="control-btn thinking-btn" id="homeThinkingBtn" title="Extended thinking ⇧⌘E">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"></circle>
@@ -290,6 +298,13 @@
                         <line x1="5" y1="12" x2="19" y2="12"></line>
                       </svg>
                     </button>
+                    <button type="button" class="control-btn vault-picker-btn" id="chatVaultPickerBtn" title="Attach from Vault">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="6" width="20" height="14" rx="2"/>
+                        <path d="M2 10h20"/>
+                        <path d="M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                    </button>
                     <button type="button" class="control-btn thinking-btn" id="chatThinkingBtn" title="Extended thinking ⇧⌘E">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"></circle>
@@ -401,6 +416,18 @@
             <div class="steps-list" id="stepsList">
               <div class="empty-state" id="emptySteps">No active tasks</div>
             </div>
+          </div>
+
+          <!-- Sub-Agents Section -->
+          <div class="sidebar-section subagents-section" id="subagentsSection" style="display:none;">
+            <div class="section-header" id="subagentsHeader">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"></path>
+              </svg>
+              <span id="subagentsCount">0 agents</span>
+            </div>
+            <div class="subagents-list" id="subagentsList"></div>
           </div>
 
           <!-- Tool Calls Section -->
@@ -691,6 +718,37 @@
 
             <button type="button" class="settings-save-btn" id="settingsSavePermissionsBtn" style="margin-top:1rem;">Save permissions</button>
             <p class="settings-status" id="settingsPermissionsStatus"></p>
+          </section>
+
+          <!-- Document Generation -->
+          <section class="settings-section">
+            <h3>Document Generation</h3>
+            <p class="settings-hint">Claude can generate Excel, PowerPoint, and PDF files. Configure where generated documents are saved.</p>
+
+            <div class="settings-field">
+              <label for="settingsDocOutputDir">Output directory</label>
+              <input type="text" id="settingsDocOutputDir" class="settings-input" placeholder="~/Documents/generated" />
+            </div>
+
+            <button type="button" class="settings-save-btn" id="settingsSaveDocumentsBtn" style="margin-top:1rem;">Save documents settings</button>
+            <p class="settings-status" id="settingsDocumentsStatus"></p>
+          </section>
+
+          <!-- Plugins -->
+          <section class="settings-section">
+            <h3>Plugins</h3>
+            <p class="settings-hint">Install and manage plugins that extend Claude's capabilities with new tools, skills, and sub-agents.</p>
+
+            <div class="settings-field">
+              <label for="settingsPluginUrl">Install from Git URL</label>
+              <div style="display:flex;gap:0.5rem;">
+                <input type="text" id="settingsPluginUrl" class="settings-input" placeholder="https://github.com/user/claude-plugin-name.git" style="flex:1;" />
+                <button type="button" class="settings-save-btn" id="settingsInstallPluginBtn">Install</button>
+              </div>
+            </div>
+            <p class="settings-status" id="settingsPluginsStatus"></p>
+
+            <div id="settingsPluginsList" style="margin-top:1rem;"></div>
           </section>
         </div>
       </div>

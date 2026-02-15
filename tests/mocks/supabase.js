@@ -67,7 +67,12 @@ function createQueryBuilder(tableName) {
   const builder = {
     select(cols) {
       selectColumns = cols || '*';
-      operation = 'select';
+      // Only set operation to 'select' if no mutating operation (insert/update/upsert/delete)
+      // is already in progress. This allows chains like .insert(data).select().single()
+      // and .update(data).eq().select().single() to work correctly.
+      if (!insertData && !updateData && operation !== 'delete' && operation !== 'upsert') {
+        operation = 'select';
+      }
       return builder;
     },
     eq(column, value) {
