@@ -61,6 +61,19 @@ const settingsMcpCancelBtn = document.getElementById('settingsMcpCancelBtn');
 const settingsMcpSaveBtn = document.getElementById('settingsMcpSaveBtn');
 const settingsMcpStatus = document.getElementById('settingsMcpStatus');
 
+// DOM Elements - Browser Settings
+const settingsBrowserEnabled = document.getElementById('settingsBrowserEnabled');
+const settingsBrowserOptions = document.getElementById('settingsBrowserOptions');
+const settingsBrowserBackend = document.getElementById('settingsBrowserBackend');
+const settingsAgentBrowserHint = document.getElementById('settingsAgentBrowserHint');
+const settingsBrowserBuiltinOptions = document.getElementById('settingsBrowserBuiltinOptions');
+const settingsBrowserMode = document.getElementById('settingsBrowserMode');
+const settingsBrowserCdpPort = document.getElementById('settingsBrowserCdpPort');
+const settingsCdpPortField = document.getElementById('settingsCdpPortField');
+const settingsBrowserHeadless = document.getElementById('settingsBrowserHeadless');
+const settingsSaveBrowserBtn = document.getElementById('settingsSaveBrowserBtn');
+const settingsBrowserStatus = document.getElementById('settingsBrowserStatus');
+
 // DOM Elements - Auth
 const authView = document.getElementById('authView');
 const authForm = document.getElementById('authForm');
@@ -146,7 +159,14 @@ async function init() {
 
   // Initialize auth — gate the app on auth state
   if (window.appAuth) {
-    window.appAuth.initAuth((session) => {
+    window.appAuth.initAuth((session, meta) => {
+      if (meta?.skipped) {
+        // Supabase not configured — fall through to normal flow
+        loadAllChats();
+        renderChatHistory();
+        homeInput.focus();
+        return;
+      }
       isAuthEnabled = true;
       onAuthReady(session);
     });
@@ -195,6 +215,14 @@ function showAppAfterAuth(session) {
   if (searchContainer && useApi()) {
     searchContainer.classList.remove('hidden');
     setupSearchListeners();
+  }
+
+  // Check if user has database admin access
+  const dbBtn = document.getElementById('dbSidebarBtn');
+  if (dbBtn && window.electronAPI?.getDatabaseAccess) {
+    window.electronAPI.getDatabaseAccess().then(result => {
+      if (result?.allowed) dbBtn.classList.remove('hidden');
+    }).catch(() => {});
   }
 
   // Load chats (from API if Supabase, else localStorage)
@@ -722,6 +750,7 @@ async function loadSettings() {
     if (settingsKeysStatus) settingsKeysStatus.textContent = '';
     renderSettingsMcpList(data.mcpServers || []);
     hideSettingsMcpForm();
+    renderBrowserSettings(data.browser);
   } catch (err) {
     if (settingsKeysStatus) {
       settingsKeysStatus.textContent = err.message && err.message.includes('404')
@@ -863,6 +892,54 @@ async function removeSettingsMcp(id) {
   }
 }
 
+// --- Browser Settings ---
+
+function renderBrowserSettings(browserData) {
+  const b = browserData || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 };
+  if (settingsBrowserEnabled) settingsBrowserEnabled.checked = b.enabled;
+  if (settingsBrowserBackend) settingsBrowserBackend.value = b.backend || 'builtin';
+  if (settingsBrowserMode) settingsBrowserMode.value = b.mode || 'clawd';
+  if (settingsBrowserHeadless) settingsBrowserHeadless.checked = b.headless || false;
+  if (settingsBrowserCdpPort) settingsBrowserCdpPort.value = b.cdpPort || 9222;
+  if (settingsBrowserStatus) settingsBrowserStatus.textContent = '';
+  toggleBrowserOptionsVisibility();
+}
+
+function toggleBrowserOptionsVisibility() {
+  const enabled = settingsBrowserEnabled && settingsBrowserEnabled.checked;
+  if (settingsBrowserOptions) settingsBrowserOptions.classList.toggle('hidden', !enabled);
+
+  const backend = settingsBrowserBackend ? settingsBrowserBackend.value : 'builtin';
+  if (settingsAgentBrowserHint) settingsAgentBrowserHint.classList.toggle('hidden', backend !== 'agent-browser');
+  if (settingsBrowserBuiltinOptions) settingsBrowserBuiltinOptions.classList.toggle('hidden', backend !== 'builtin');
+
+  const mode = settingsBrowserMode ? settingsBrowserMode.value : 'clawd';
+  if (settingsCdpPortField) settingsCdpPortField.classList.toggle('hidden', mode !== 'chrome');
+}
+
+async function saveBrowserSettings() {
+  if (!window.electronAPI || typeof window.electronAPI.updateSettings !== 'function') return;
+  const body = {
+    browser: {
+      enabled: settingsBrowserEnabled ? settingsBrowserEnabled.checked : false,
+      backend: settingsBrowserBackend ? settingsBrowserBackend.value : 'builtin',
+      mode: settingsBrowserMode ? settingsBrowserMode.value : 'clawd',
+      headless: settingsBrowserHeadless ? settingsBrowserHeadless.checked : false,
+      cdpPort: settingsBrowserCdpPort ? parseInt(settingsBrowserCdpPort.value) || 9222 : 9222
+    }
+  };
+  try {
+    const data = await window.electronAPI.updateSettings(body);
+    cachedSettings.browser = data.browser;
+    if (settingsBrowserStatus) settingsBrowserStatus.textContent = 'Saved.';
+  } catch (err) {
+    if (settingsBrowserStatus) {
+      settingsBrowserStatus.textContent = err.message || 'Save failed';
+      settingsBrowserStatus.classList.add('error');
+    }
+  }
+}
+
 // Setup all event listeners
 function setupEventListeners() {
   // Home form
@@ -889,6 +966,12 @@ function setupEventListeners() {
   leftSidebarToggle.addEventListener('click', toggleLeftSidebar);
   leftSidebarExpand.addEventListener('click', toggleLeftSidebar);
 
+  // Database Explorer
+  const dbSidebarBtn = document.getElementById('dbSidebarBtn');
+  const dbBackBtn = document.getElementById('dbBackBtn');
+  if (dbSidebarBtn) dbSidebarBtn.addEventListener('click', () => showView('database'));
+  if (dbBackBtn) dbBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
+
   // Settings
   if (settingsSidebarBtn) settingsSidebarBtn.addEventListener('click', openSettings);
   if (settingsBackBtn) settingsBackBtn.addEventListener('click', closeSettings);
@@ -900,6 +983,12 @@ function setupEventListeners() {
   if (settingsMcpType) settingsMcpType.addEventListener('change', () => toggleSettingsMcpTypeFields(settingsMcpType.value));
   if (settingsMcpCancelBtn) settingsMcpCancelBtn.addEventListener('click', hideSettingsMcpForm);
   if (settingsMcpSaveBtn) settingsMcpSaveBtn.addEventListener('click', saveSettingsMcp);
+
+  // Browser settings
+  if (settingsBrowserEnabled) settingsBrowserEnabled.addEventListener('change', toggleBrowserOptionsVisibility);
+  if (settingsBrowserBackend) settingsBrowserBackend.addEventListener('change', toggleBrowserOptionsVisibility);
+  if (settingsBrowserMode) settingsBrowserMode.addEventListener('change', toggleBrowserOptionsVisibility);
+  if (settingsSaveBrowserBtn) settingsSaveBrowserBtn.addEventListener('click', saveBrowserSettings);
 
   // File attachment buttons
   const homeAttachBtn = document.getElementById('homeAttachBtn');
@@ -1317,16 +1406,22 @@ function switchToChatView() {
 }
 
 /**
- * Show a main content view: 'home' | 'chat' | 'settings'.
- * Hides the other two. When opening settings, stores current view for Back.
+ * Show a main content view: 'home' | 'chat' | 'settings' | 'database'.
+ * Hides the others. When opening settings/database, stores current view for Back.
  */
 function showView(viewName) {
   homeView.classList.toggle('hidden', viewName !== 'home');
   chatView.classList.toggle('hidden', viewName !== 'chat');
   if (settingsView) settingsView.classList.toggle('hidden', viewName !== 'settings');
+  const dbView = document.getElementById('dbView');
+  if (dbView) dbView.classList.toggle('hidden', viewName !== 'database');
   if (viewName === 'settings') {
     lastViewBeforeSettings = currentMainView;
     loadSettings();
+  }
+  if (viewName === 'database') {
+    lastViewBeforeSettings = currentMainView;
+    if (typeof window.dbExplorer !== 'undefined') window.dbExplorer.load();
   }
   currentMainView = viewName;
 }

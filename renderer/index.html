@@ -6,6 +6,7 @@
   <title>Claude</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="web-api.js"></script>
   <script src="auth.js"></script>
@@ -49,6 +50,29 @@
             <line x1="21" y1="12" x2="9" y2="12"></line>
           </svg>
           <span>Sign Out</span>
+        </button>
+        <button type="button" class="reports-sidebar-btn" id="reportsSidebarBtn" title="Reports">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          <span>Reports</span>
+        </button>
+        <button type="button" class="jobs-sidebar-btn" id="jobsSidebarBtn" title="Jobs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <span>Jobs</span>
+        </button>
+        <button type="button" class="db-sidebar-btn hidden" id="dbSidebarBtn" title="Database">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+          </svg>
+          <span>Database</span>
         </button>
         <button type="button" class="settings-sidebar-btn" id="settingsSidebarBtn" title="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -463,6 +487,383 @@
             </div>
             <p class="settings-status" id="settingsMcpStatus"></p>
           </section>
+          <section class="settings-section">
+            <h2 class="settings-section-title">Browser automation</h2>
+            <p class="settings-section-desc">Enable the AI agent to navigate websites, fill forms, take screenshots, and interact with web pages.</p>
+            <div class="settings-field">
+              <label class="settings-checkbox-label">
+                <input type="checkbox" id="settingsBrowserEnabled" />
+                <span>Enable browser automation</span>
+              </label>
+            </div>
+            <div id="settingsBrowserOptions" class="hidden">
+              <div class="settings-field">
+                <label for="settingsBrowserBackend">Backend</label>
+                <select id="settingsBrowserBackend" class="settings-select">
+                  <option value="builtin">Built-in (Playwright)</option>
+                  <option value="agent-browser">Vercel agent-browser</option>
+                </select>
+                <span class="settings-hint hidden" id="settingsAgentBrowserHint">Requires <code>npm i -g agent-browser && agent-browser install</code></span>
+              </div>
+              <div id="settingsBrowserBuiltinOptions">
+                <div class="settings-field">
+                  <label for="settingsBrowserMode">Mode</label>
+                  <select id="settingsBrowserMode" class="settings-select">
+                    <option value="clawd">Isolated Chromium</option>
+                    <option value="chrome">Connect to Chrome (CDP)</option>
+                  </select>
+                </div>
+                <div class="settings-field settings-cdp-port hidden" id="settingsCdpPortField">
+                  <label for="settingsBrowserCdpPort">CDP port</label>
+                  <input type="number" id="settingsBrowserCdpPort" class="settings-input" value="9222" min="1" max="65535" />
+                </div>
+                <div class="settings-field">
+                  <label class="settings-checkbox-label">
+                    <input type="checkbox" id="settingsBrowserHeadless" />
+                    <span>Headless mode (no visible window)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="settings-save-btn" id="settingsSaveBrowserBtn">Save browser settings</button>
+            <p class="settings-status" id="settingsBrowserStatus"></p>
+          </section>
+        </div>
+      </div>
+      <!-- Database Explorer View -->
+      <div class="db-view hidden" id="dbView">
+        <header class="db-header">
+          <button type="button" class="db-back-btn" id="dbBackBtn" title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <h1 class="db-title">Database Explorer</h1>
+        </header>
+        <div class="db-content">
+          <!-- Stats Banner -->
+          <div class="db-stats-banner" id="dbStatsBanner">
+            <div class="db-stat-card">
+              <span class="db-stat-value" id="dbStatTables">-</span>
+              <span class="db-stat-label">Tables</span>
+            </div>
+            <div class="db-stat-card">
+              <span class="db-stat-value" id="dbStatSize">-</span>
+              <span class="db-stat-label">Total Size</span>
+            </div>
+            <div class="db-stat-card">
+              <span class="db-stat-value" id="dbStatIndexes">-</span>
+              <span class="db-stat-label">Indexes</span>
+            </div>
+            <div class="db-stat-card">
+              <span class="db-stat-value" id="dbStatVersion">-</span>
+              <span class="db-stat-label">Postgres</span>
+            </div>
+            <div class="db-extensions" id="dbExtensions"></div>
+          </div>
+          <!-- Two-panel layout -->
+          <div class="db-panels">
+            <!-- Left: Table List -->
+            <div class="db-table-list-panel">
+              <h3 class="db-panel-title">Tables</h3>
+              <div class="db-table-list" id="dbTableList">
+                <div class="db-loading">Loading tables...</div>
+              </div>
+            </div>
+            <!-- Right: Table Detail -->
+            <div class="db-detail-panel" id="dbDetailPanel">
+              <div class="db-detail-placeholder">
+                <p>Select a table to view its data</p>
+              </div>
+              <!-- Tabs -->
+              <div class="db-tabs hidden" id="dbTabs">
+                <button class="db-tab active" data-tab="data">Data</button>
+                <button class="db-tab" data-tab="schema">Schema</button>
+                <button class="db-tab" data-tab="indexes">Indexes</button>
+              </div>
+              <!-- Data Tab -->
+              <div class="db-tab-content" id="dbDataTab">
+                <div class="db-data-toolbar" id="dbDataToolbar">
+                  <input type="text" class="db-search-input" id="dbSearchInput" placeholder="Search rows..." autocomplete="off" />
+                  <div class="db-pagination">
+                    <select class="db-page-size" id="dbPageSize">
+                      <option value="25" selected>25 rows</option>
+                      <option value="50">50 rows</option>
+                      <option value="100">100 rows</option>
+                    </select>
+                    <span class="db-page-info" id="dbPageInfo"></span>
+                    <button class="db-page-btn" id="dbPrevPage" disabled>&laquo; Prev</button>
+                    <button class="db-page-btn" id="dbNextPage" disabled>Next &raquo;</button>
+                  </div>
+                </div>
+                <div class="db-data-table-wrapper" id="dbDataTableWrapper">
+                  <table class="db-data-table" id="dbDataTable">
+                    <thead id="dbDataThead"></thead>
+                    <tbody id="dbDataTbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <!-- Schema Tab -->
+              <div class="db-tab-content hidden" id="dbSchemaTab">
+                <table class="db-schema-table">
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Nullable</th>
+                      <th>Default</th>
+                      <th>Constraints</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dbSchemaTbody"></tbody>
+                </table>
+              </div>
+              <!-- Indexes Tab -->
+              <div class="db-tab-content hidden" id="dbIndexesTab">
+                <table class="db-indexes-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Definition</th>
+                      <th>Unique</th>
+                      <th>Size</th>
+                      <th>Scans</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dbIndexesTbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Reports View -->
+      <div class="reports-view hidden" id="reportsView">
+        <header class="reports-header">
+          <button type="button" class="reports-back-btn" id="reportsBackBtn" title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <h1 class="reports-title" id="reportsTitle">Reports</h1>
+          <button type="button" class="reports-new-btn" id="reportsNewBtn">New Report</button>
+        </header>
+        <div class="reports-content">
+          <!-- Report List Sub-view -->
+          <div class="reports-list-view" id="reportsListView">
+            <div class="reports-unavailable hidden" id="reportsUnavailable">
+              <p>Connect Supabase to use Reports</p>
+            </div>
+            <!-- Summary Stats -->
+            <div class="report-summary-cards" id="reportSummaryCards">
+              <div class="report-stat-card">
+                <span class="report-stat-value" id="reportStatChats">-</span>
+                <span class="report-stat-label">Total Chats</span>
+              </div>
+              <div class="report-stat-card">
+                <span class="report-stat-value" id="reportStatMessages">-</span>
+                <span class="report-stat-label">Total Messages</span>
+              </div>
+              <div class="report-stat-card">
+                <span class="report-stat-value" id="reportStatDays">-</span>
+                <span class="report-stat-label">Active Days</span>
+              </div>
+              <div class="report-stat-card">
+                <span class="report-stat-value" id="reportStatAvg">-</span>
+                <span class="report-stat-label">Msgs/Day</span>
+              </div>
+            </div>
+            <!-- Templates -->
+            <h3 class="reports-section-title">Templates</h3>
+            <div class="report-templates-grid" id="reportTemplatesGrid">
+              <div class="template-card" data-template="usage_over_time">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                <span>Usage Over Time</span>
+              </div>
+              <div class="template-card" data-template="provider_breakdown">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                <span>Provider Breakdown</span>
+              </div>
+              <div class="template-card" data-template="tool_usage">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                <span>Tool Usage</span>
+              </div>
+              <div class="template-card" data-template="custom">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Custom Report</span>
+              </div>
+            </div>
+            <!-- Saved Reports -->
+            <h3 class="reports-section-title">Saved Reports</h3>
+            <div class="saved-reports-list" id="savedReportsList">
+              <div class="reports-empty-state" id="savedReportsEmpty">No saved reports. Create one from a template or build custom.</div>
+            </div>
+          </div>
+          <!-- Report Builder Sub-view -->
+          <div class="reports-builder-view hidden" id="reportsBuilderView">
+            <div class="report-builder-controls">
+              <div class="builder-field">
+                <label for="builderReportName">Report Name</label>
+                <input type="text" id="builderReportName" class="settings-input" placeholder="My Report" />
+              </div>
+              <div class="builder-field">
+                <label for="builderSource">Data Source</label>
+                <select id="builderSource" class="settings-select">
+                  <option value="messages">Messages</option>
+                  <option value="chats">Chats</option>
+                  <option value="tool_calls">Tool Calls</option>
+                  <option value="attachments">Attachments</option>
+                </select>
+              </div>
+              <div class="builder-field">
+                <label for="builderDays">Date Range</label>
+                <select id="builderDays" class="settings-select">
+                  <option value="7">Last 7 days</option>
+                  <option value="30" selected>Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                  <option value="365">All time</option>
+                </select>
+              </div>
+              <div class="builder-field">
+                <label for="builderGroupBy">Group By</label>
+                <select id="builderGroupBy" class="settings-select">
+                  <option value="day">Day</option>
+                  <option value="week">Week</option>
+                  <option value="month">Month</option>
+                  <option value="provider">Provider</option>
+                  <option value="model">Model</option>
+                </select>
+              </div>
+              <div class="builder-field">
+                <label for="builderChartType">Chart Type</label>
+                <select id="builderChartType" class="settings-select">
+                  <option value="line">Line</option>
+                  <option value="bar">Bar</option>
+                  <option value="doughnut">Doughnut</option>
+                  <option value="horizontalBar">Horizontal Bar</option>
+                  <option value="table">Table</option>
+                </select>
+              </div>
+              <div class="builder-actions">
+                <button type="button" class="builder-run-btn" id="builderRunBtn">Run</button>
+                <button type="button" class="builder-save-btn" id="builderSaveBtn">Save</button>
+              </div>
+            </div>
+            <div class="report-builder-preview" id="reportBuilderPreview">
+              <div class="report-chart-container" id="reportChartContainer">
+                <canvas id="reportChart"></canvas>
+              </div>
+              <div class="report-table-container hidden" id="reportTableContainer">
+                <table class="report-data-table" id="reportDataTable">
+                  <thead id="reportDataThead"></thead>
+                  <tbody id="reportDataTbody"></tbody>
+                </table>
+              </div>
+              <div class="report-no-data hidden" id="reportNoData">No data yet — click Run to generate the report</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Jobs View -->
+      <div class="jobs-view hidden" id="jobsView">
+        <header class="jobs-header">
+          <button type="button" class="jobs-back-btn" id="jobsBackBtn" title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <h1 class="jobs-title">Scheduled Jobs</h1>
+          <button type="button" class="jobs-new-btn" id="jobsNewBtn">New Job</button>
+        </header>
+        <div class="jobs-content">
+          <div class="jobs-unavailable hidden" id="jobsUnavailable">
+            <p>Connect Supabase to use Scheduled Jobs</p>
+          </div>
+          <div class="jobs-list" id="jobsList">
+            <div class="jobs-empty-state" id="jobsEmpty">No scheduled jobs. Click 'New Job' to get started.</div>
+          </div>
+          <!-- Job Create/Edit Form -->
+          <div class="jobs-form hidden" id="jobsForm">
+            <h3 class="jobs-form-title" id="jobsFormTitle">New Job</h3>
+            <div class="settings-field">
+              <label for="jobName">Name</label>
+              <input type="text" id="jobName" class="settings-input" placeholder="My scheduled job" />
+            </div>
+            <div class="settings-field">
+              <label for="jobDescription">Description</label>
+              <input type="text" id="jobDescription" class="settings-input" placeholder="Optional description" />
+            </div>
+            <div class="settings-field">
+              <label for="jobType">Job Type</label>
+              <select id="jobType" class="settings-select">
+                <option value="one_time">One-time</option>
+                <option value="recurring">Recurring</option>
+                <option value="cron">Cron Expression</option>
+              </select>
+            </div>
+            <!-- Conditional schedule fields -->
+            <div class="settings-field" id="jobExecuteAtField">
+              <label for="jobExecuteAt">Execute At</label>
+              <input type="datetime-local" id="jobExecuteAt" class="settings-input" />
+            </div>
+            <div class="settings-field hidden" id="jobIntervalField">
+              <label for="jobInterval">Interval (seconds)</label>
+              <input type="number" id="jobInterval" class="settings-input" placeholder="3600" min="60" />
+            </div>
+            <div class="settings-field hidden" id="jobCronField">
+              <label for="jobCron">Cron Expression</label>
+              <input type="text" id="jobCron" class="settings-input" placeholder="0 * * * *" />
+            </div>
+            <div class="settings-field">
+              <label for="jobActionType">Action Type</label>
+              <select id="jobActionType" class="settings-select">
+                <option value="report_generation">Report Generation</option>
+                <option value="webhook">Webhook</option>
+                <option value="data_export">Data Export</option>
+              </select>
+            </div>
+            <!-- Report generation config -->
+            <div class="settings-field" id="jobReportField">
+              <label for="jobReportId">Saved Report</label>
+              <select id="jobReportId" class="settings-select">
+                <option value="">Select a saved report...</option>
+              </select>
+            </div>
+            <!-- Webhook config -->
+            <div class="settings-field hidden" id="jobWebhookUrlField">
+              <label for="jobWebhookUrl">Webhook URL</label>
+              <input type="url" id="jobWebhookUrl" class="settings-input" placeholder="https://..." />
+            </div>
+            <div class="settings-field hidden" id="jobWebhookMethodField">
+              <label for="jobWebhookMethod">HTTP Method</label>
+              <select id="jobWebhookMethod" class="settings-select">
+                <option value="POST">POST</option>
+                <option value="GET">GET</option>
+                <option value="PUT">PUT</option>
+              </select>
+            </div>
+            <!-- Data export config -->
+            <div class="settings-field hidden" id="jobExportSourceField">
+              <label for="jobExportSource">Export Source</label>
+              <select id="jobExportSource" class="settings-select">
+                <option value="messages">Messages</option>
+                <option value="chats">Chats</option>
+              </select>
+            </div>
+            <div class="settings-field hidden" id="jobExportFormatField">
+              <label for="jobExportFormat">Export Format</label>
+              <select id="jobExportFormat" class="settings-select">
+                <option value="json">JSON</option>
+                <option value="csv">CSV</option>
+              </select>
+            </div>
+            <div class="settings-mcp-form-actions">
+              <button type="button" class="settings-mcp-cancel-btn" id="jobCancelBtn">Cancel</button>
+              <button type="button" class="settings-mcp-save-btn" id="jobSaveBtn">Save Job</button>
+            </div>
+            <p class="settings-status" id="jobFormStatus"></p>
+          </div>
         </div>
       </div>
     </div><!-- end main-content -->
@@ -475,6 +876,7 @@
     </button>
   </div>
 
+  <script src="db-explorer.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

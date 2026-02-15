@@ -120,6 +120,163 @@
         throw new Error(data.error || 'HTTP ' + response.status);
       }
       return await response.json();
+    },
+
+    getDatabaseAccess: async function () {
+      try {
+        const response = await fetch(apiUrl('/api/database/access'), { headers: buildHeaders() });
+        if (!response.ok) return { allowed: false };
+        return await response.json();
+      } catch (err) {
+        return { allowed: false };
+      }
+    },
+
+    getDatabaseTables: async function () {
+      const response = await fetch(apiUrl('/api/database/tables'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+
+    getDatabaseTableSchema: async function (tableName) {
+      const response = await fetch(apiUrl('/api/database/tables/' + encodeURIComponent(tableName) + '/schema'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+
+    getDatabaseTableRows: async function (tableName, params) {
+      var qs = new URLSearchParams();
+      if (params) {
+        if (params.page !== undefined) qs.set('page', params.page);
+        if (params.pageSize !== undefined) qs.set('pageSize', params.pageSize);
+        if (params.sort) qs.set('sort', params.sort);
+        if (params.dir) qs.set('dir', params.dir);
+        if (params.search) qs.set('search', params.search);
+      }
+      var url = apiUrl('/api/database/tables/' + encodeURIComponent(tableName) + '/rows');
+      var qsStr = qs.toString();
+      if (qsStr) url += '?' + qsStr;
+      const response = await fetch(url, { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+
+    getDatabaseStats: async function () {
+      const response = await fetch(apiUrl('/api/database/stats'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+
+    // ==================== REPORTS ====================
+    getReportSummary: async function () {
+      const response = await fetch(apiUrl('/api/reports/summary'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getReportDailyMessages: async function (days) {
+      const response = await fetch(apiUrl('/api/reports/daily-messages?days=' + (days || 30)), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getReportProviderUsage: async function (days) {
+      const response = await fetch(apiUrl('/api/reports/provider-usage?days=' + (days || 30)), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getReportToolUsage: async function (days) {
+      const response = await fetch(apiUrl('/api/reports/tool-usage?days=' + (days || 30)), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    executeReportQuery: async function (config) {
+      const response = await fetch(apiUrl('/api/reports/query'), {
+        method: 'POST', headers: buildHeaders(), body: JSON.stringify(config)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getSavedReports: async function () {
+      const response = await fetch(apiUrl('/api/reports/saved'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getSavedReport: async function (reportId) {
+      const response = await fetch(apiUrl('/api/reports/saved/' + reportId), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    createSavedReport: async function (data) {
+      const response = await fetch(apiUrl('/api/reports/saved'), {
+        method: 'POST', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    updateSavedReport: async function (reportId, data) {
+      const response = await fetch(apiUrl('/api/reports/saved/' + reportId), {
+        method: 'PATCH', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    deleteSavedReport: async function (reportId) {
+      const response = await fetch(apiUrl('/api/reports/saved/' + reportId), {
+        method: 'DELETE', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    runSavedReport: async function (reportId) {
+      const response = await fetch(apiUrl('/api/reports/saved/' + reportId + '/run'), {
+        method: 'POST', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+
+    // ==================== JOBS ====================
+    getJobs: async function () {
+      const response = await fetch(apiUrl('/api/jobs'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    createJob: async function (data) {
+      const response = await fetch(apiUrl('/api/jobs'), {
+        method: 'POST', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getJob: async function (jobId) {
+      const response = await fetch(apiUrl('/api/jobs/' + jobId), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    updateJob: async function (jobId, data) {
+      const response = await fetch(apiUrl('/api/jobs/' + jobId), {
+        method: 'PATCH', headers: buildHeaders(), body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    deleteJob: async function (jobId) {
+      const response = await fetch(apiUrl('/api/jobs/' + jobId), {
+        method: 'DELETE', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    getJobExecutions: async function (jobId, limit) {
+      const response = await fetch(apiUrl('/api/jobs/' + jobId + '/executions?limit=' + (limit || 10)), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    runJob: async function (jobId) {
+      const response = await fetch(apiUrl('/api/jobs/' + jobId + '/run'), {
+        method: 'POST', headers: buildHeaders()
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
     }
   };
 })();
