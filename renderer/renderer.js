@@ -92,6 +92,22 @@ const settingsFolderCancelBtn = document.getElementById('settingsFolderCancelBtn
 const settingsSaveInstructionsBtn = document.getElementById('settingsSaveInstructionsBtn');
 const settingsInstructionsStatus = document.getElementById('settingsInstructionsStatus');
 
+// DOM Elements - Permission Settings
+const settingsPermissionMode = document.getElementById('settingsPermissionMode');
+const settingsAllowedDirectoriesList = document.getElementById('settingsAllowedDirectoriesList');
+const settingsNewDirectoryPath = document.getElementById('settingsNewDirectoryPath');
+const settingsAddDirectoryBtn = document.getElementById('settingsAddDirectoryBtn');
+const settingsFileDeleteConfirmation = document.getElementById('settingsFileDeleteConfirmation');
+const settingsSavePermissionsBtn = document.getElementById('settingsSavePermissionsBtn');
+const settingsPermissionsStatus = document.getElementById('settingsPermissionsStatus');
+
+// DOM Elements - Permission Dialog
+const permissionDialogOverlay = document.getElementById('permissionDialogOverlay');
+const permissionToolName = document.getElementById('permissionToolName');
+const permissionToolInput = document.getElementById('permissionToolInput');
+const permissionAllowBtn = document.getElementById('permissionAllowBtn');
+const permissionDenyBtn = document.getElementById('permissionDenyBtn');
+
 // DOM Elements - Vault
 const vaultView = document.getElementById('vaultView');
 const vaultBackBtn = document.getElementById('vaultBackBtn');
