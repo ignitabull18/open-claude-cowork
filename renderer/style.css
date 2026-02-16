@@ -3615,7 +3615,7 @@ body {
   cursor: pointer;
   color: var(--text-tertiary);
   transition: background 0.15s, color 0.15s;
-  z-index: 10;
+  z-index: 200;
 }
 
 .left-sidebar-expand-btn:hover {
@@ -3699,7 +3699,7 @@ body {
   cursor: pointer;
   color: var(--text-tertiary);
   transition: background 0.15s, color 0.15s;
-  z-index: 10;
+  z-index: 200;
 }
 
 .left-sidebar-toggle:hover {

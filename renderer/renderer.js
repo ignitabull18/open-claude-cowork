@@ -204,40 +204,6 @@ async function saveContext() {
     saveContextBtn.textContent = 'Update Context';
   }
 }
-    return;
-  }
-
-  try {
-    saveContextBtn.disabled = true;
-    saveContextBtn.textContent = 'Saving...';
-    
-    await window.electronAPI.updateChat(currentChatId, {
-      metadata: {
-        project: { name, desc },
-        instructions,
-        database: { tables: selectedTables },
-        assets: { pinnedIds: pinnedAssetIds },
-        webSources,
-        integrations: {
-          notion: notionItems,
-          clickup: clickupItems
-        }
-      }
-    });
-    
-    saveContextBtn.textContent = 'Updated!';
-    updateContextUsage();
-    setTimeout(() => {
-      saveContextBtn.disabled = false;
-      saveContextBtn.textContent = 'Update Context';
-    }, 2000);
-  } catch (err) {
-    console.error('Save context failed:', err);
-    showAppError('Failed to save context');
-    saveContextBtn.disabled = false;
-    saveContextBtn.textContent = 'Update Context';
-  }
-}
 
 // Generic external source picker (Notion/ClickUp/GDrive)
 async function openExternalSourcePicker(type) {
@@ -633,7 +599,6 @@ const leftSidebarExpand = document.getElementById('leftSidebarExpand');
 // DOM Elements - Settings
 const settingsView = document.getElementById('settingsView');
 const settingsBackBtn = document.getElementById('settingsBackBtn');
-const settingsSidebarBtn = document.getElementById('settingsSidebarBtn');
 const settingsAnthropicKey = document.getElementById('settingsAnthropicKey');
 const settingsComposioKey = document.getElementById('settingsComposioKey');
 const settingsSmitheryKey = document.getElementById('settingsSmitheryKey');
@@ -746,7 +711,6 @@ const authError = document.getElementById('authError');
 const authInfo = document.getElementById('authInfo');
 const authSkipBtn = document.getElementById('authSkipBtn');
 const userEmailLabel = document.getElementById('userEmailLabel');
-const signoutSidebarBtn = document.getElementById('signoutSidebarBtn');
 
 // DOM Elements - Search
 const searchContainer = document.getElementById('searchContainer');
@@ -754,10 +718,6 @@ const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('searchResults');
 
 // DOM Elements - Artifact Panel
-const tabProgress = document.getElementById('tabProgress');
-const tabArtifact = document.getElementById('tabArtifact');
-const progressPanel = document.getElementById('progressPanel');
-const artifactPanel = document.getElementById('artifactPanel');
 const artifactLangBadge = document.getElementById('artifactLangBadge');
 const artifactTitle = document.getElementById('artifactTitle');
 const artifactVersionInfo = document.getElementById('artifactVersionInfo');
@@ -805,6 +765,15 @@ let currentFolderType = 'chat'; // 'chat' | 'job' | 'report'
 
 // Main view state (home | chat | settings)
 let currentMainView = 'home';
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'currentMainView', {
+    get: () => currentMainView,
+    set: (value) => {
+      currentMainView = value;
+    },
+    configurable: true,
+  });
+}
 let lastViewBeforeSettings = 'home';
 // Cached settings for MCP list (from GET /api/settings)
 let cachedSettings = { apiKeys: {}, mcpServers: [] };
@@ -1290,17 +1259,9 @@ if (authSkipBtn) {
 }
 
   // Sign out
-  if (signoutSidebarBtn) {
-    signoutSidebarBtn.addEventListener('click', async () => {
-      await window.appAuth.signOut();
-      allChats = [];
-      currentChatId = null;
-      chatMessages.textContent = '';
-      renderChatHistory();
-      signoutSidebarBtn.classList.add('hidden');
-      if (userEmailLabel) userEmailLabel.textContent = '';
-      showAuthView();
-    });
+  const legacySignoutBtn = document.getElementById('signoutSidebarBtn');
+  if (legacySignoutBtn) {
+    legacySignoutBtn.addEventListener('click', handleSignOut);
   }
 }
 
@@ -1313,6 +1274,32 @@ function showAuthInfo(msg) {
 function hideAuthMessages() {
   if (authError) authError.classList.add('hidden');
   if (authInfo) authInfo.classList.add('hidden');
+}
+
+async function handleSignOut() {
+  if (!window.appAuth) return;
+
+  try {
+    await window.appAuth.signOut();
+  } catch (err) {
+    console.error('Sign out failed:', err);
+  }
+
+  allChats = [];
+  currentChatId = null;
+  chatMessages.textContent = '';
+  renderChatHistory();
+
+  const navSignOutBtn = document.getElementById('navSignOutBtn');
+  if (navSignOutBtn) {
+    navSignOutBtn.classList.add('hidden');
+  }
+
+  if (userEmailLabel) {
+    userEmailLabel.textContent = '';
+  }
+
+  showAuthView();
 }
 
 function showAppError(message, timeoutMs = 5000) {
@@ -2638,20 +2625,11 @@ function setupEventListeners() {
   if (dbBackBtn) dbBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
 
   // Settings
-  if (settingsSidebarBtn) settingsSidebarBtn.addEventListener('click', openSettings);
   if (settingsBackBtn) settingsBackBtn.addEventListener('click', closeSettings);
 
-  // Reports and Jobs sidebar buttons
-  const reportsSidebarBtn = document.getElementById('reportsSidebarBtn');
-  const jobsSidebarBtn = document.getElementById('jobsSidebarBtn');
+  // Section back buttons
   const reportsBackBtn = document.getElementById('reportsBackBtn');
   const jobsBackBtn = document.getElementById('jobsBackBtn');
-  if (reportsSidebarBtn) reportsSidebarBtn.addEventListener('click', () => showView('reports'));
-  if (jobsSidebarBtn) jobsSidebarBtn.addEventListener('click', () => showView('jobs'));
-  const tasksSidebarBtn = document.getElementById('tasksSidebarBtn');
-  if (tasksSidebarBtn) tasksSidebarBtn.addEventListener('click', () => showView('tasks'));
-  const vaultSidebarBtn = document.getElementById('vaultSidebarBtn');
-  if (vaultSidebarBtn) vaultSidebarBtn.addEventListener('click', () => showView('vault'));
   if (vaultBackBtn) vaultBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
   if (reportsBackBtn) reportsBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
   if (jobsBackBtn) jobsBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
@@ -2729,17 +2707,7 @@ function setupEventListeners() {
 
   const navSignOutBtn = document.getElementById('navSignOutBtn');
   if (navSignOutBtn) {
-    navSignOutBtn.addEventListener('click', async () => {
-      if (!window.appAuth) return;
-      await window.appAuth.signOut();
-      allChats = [];
-      currentChatId = null;
-      chatMessages.textContent = '';
-      renderChatHistory();
-      navSignOutBtn.classList.add('hidden');
-      if (userEmailLabel) userEmailLabel.textContent = '';
-      showAuthView();
-    });
+    navSignOutBtn.addEventListener('click', handleSignOut);
   }
 
   // Setup dropdowns
@@ -4324,6 +4292,50 @@ function updateToolCallResult(toolId, result) {
 
 // ── Sub-Agent UI functions ──────────────────────────────────────────
 
+function ensureSubagentsSidebarSection() {
+  let section = document.getElementById('subagentsSection');
+  if (!section && progressPanel) {
+    section = document.createElement('div');
+    section.id = 'subagentsSection';
+    section.className = 'sidebar-section subagents-section';
+    section.style.display = 'none';
+
+    const header = document.createElement('div');
+    header.className = 'section-header';
+    header.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M12 6v6l4 2"></path>
+      </svg>
+      <span>Sub-Agents</span>
+      <span id="subagentsCount" style="margin-left:auto;font-size:0.72rem;color:var(--text-secondary,#a0a0a0)">0 agents</span>
+    `;
+
+    const list = document.createElement('div');
+    list.id = 'subagentsList';
+    list.className = 'subagents-list';
+
+    section.append(header, list);
+    progressPanel.appendChild(section);
+  }
+
+  const list = document.getElementById('subagentsList');
+  const countEl = document.getElementById('subagentsCount');
+
+  if (!list && section && !section.querySelector('.subagents-list')) {
+    const fallbackList = document.createElement('div');
+    fallbackList.id = 'subagentsList';
+    fallbackList.className = 'subagents-list';
+    section.appendChild(fallbackList);
+  }
+
+  return {
+    section,
+    list: document.getElementById('subagentsList'),
+    countEl
+  };
+}
+
 function addSubagent(agentId, agentType, description) {
   const entry = {
     id: agentId,
@@ -4336,14 +4348,15 @@ function addSubagent(agentId, agentType, description) {
   activeSubagents.set(agentId, entry);
 
   // Show the sidebar section
-  const section = document.getElementById('subagentsSection');
-  if (section) section.style.display = '';
+  const subagentUI = ensureSubagentsSidebarSection();
+  if (!subagentUI.section) return;
+  subagentUI.section.style.display = '';
 
   // Update count
   updateSubagentCount();
 
   // Add sidebar entry
-  const list = document.getElementById('subagentsList');
+  const list = subagentUI.list;
   if (!list) return;
 
   const div = document.createElement('div');
@@ -4458,7 +4471,7 @@ function updateInlineSubagentComplete(agentId) {
 }
 
 function updateSubagentCount() {
-  const countEl = document.getElementById('subagentsCount');
+  const countEl = ensureSubagentsSidebarSection().countEl;
   if (!countEl) return;
   const running = activeSubagents.size;
   const total = document.querySelectorAll('.subagent-item').length;
@@ -4466,11 +4479,12 @@ function updateSubagentCount() {
 }
 
 function clearSubagentsSidebar() {
-  const list = document.getElementById('subagentsList');
+  const subagentUI = ensureSubagentsSidebarSection();
+  const list = subagentUI.list;
   if (list) list.innerHTML = '';
-  const section = document.getElementById('subagentsSection');
+  const section = subagentUI.section;
   if (section) section.style.display = 'none';
-  const countEl = document.getElementById('subagentsCount');
+  const countEl = subagentUI.countEl;
   if (countEl) countEl.textContent = '0 agents';
 }
 

@@ -48,13 +48,13 @@
             <polyline points="9 22 9 12 15 12 15 22"></polyline>
           </svg>
         </button>
-        <button class="nav-rail-item" data-view="chat" title="Chats">
+        <button class="nav-rail-item" id="chatSidebarBtn" data-view="chat" title="Chats">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           </svg>
         </button>
         <div class="nav-rail-divider"></div>
-        <button class="nav-rail-item" data-view="tasks" title="Tasks">
+        <button class="nav-rail-item" id="tasksSidebarBtn" data-view="tasks" title="Tasks">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <line x1="8" y1="9" x2="16" y2="9"></line>
@@ -62,19 +62,19 @@
             <line x1="8" y1="17" x2="12" y2="17"></line>
           </svg>
         </button>
-        <button class="nav-rail-item" data-view="vault" title="Assets Vault">
+        <button class="nav-rail-item" id="vaultSidebarBtn" data-view="vault" title="Assets Vault">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
         </button>
-        <button class="nav-rail-item" data-view="reports" title="Reports">
+        <button class="nav-rail-item" id="reportsSidebarBtn" data-view="reports" title="Reports">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="20" x2="18" y2="10"></line>
             <line x1="12" y1="20" x2="12" y2="4"></line>
             <line x1="6" y1="20" x2="6" y2="14"></line>
           </svg>
         </button>
-        <button class="nav-rail-item" data-view="jobs" title="Workflows">
+        <button class="nav-rail-item" id="jobsSidebarBtn" data-view="jobs" title="Workflows">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
             <polyline points="12 6 12 12 16 14"></polyline>
@@ -89,7 +89,7 @@
         </button>
       </div>
       <div class="nav-rail-bottom">
-        <button class="nav-rail-item" data-view="settings" title="Settings">
+        <button class="nav-rail-item" id="settingsSidebarBtn" data-view="settings" title="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -177,11 +177,11 @@
             </div>
             <div class="auth-field">
               <label for="authEmail">Email</label>
-              <input type="email" id="authEmail" class="auth-input" placeholder="you@example.com" required />
+              <input type="email" id="authEmail" name="email" class="auth-input" placeholder="you@example.com" required autocomplete="username" />
             </div>
             <div class="auth-field">
               <label for="authPassword">Password</label>
-              <input type="password" id="authPassword" class="auth-input" placeholder="Password" required minlength="6" />
+              <input type="password" id="authPassword" name="password" class="auth-input" placeholder="Password" required minlength="6" autocomplete="current-password" />
             </div>
             <div class="auth-field auth-signup-field hidden" id="authDisplayNameField">
               <label for="authDisplayName">Display Name</label>
@@ -754,47 +754,85 @@
           <section class="settings-section">
             <h2 class="settings-section-title">Provider tokens</h2>
             <p class="settings-section-desc">API keys are stored locally and override .env. They are never sent to the client in full.</p>
-            <div class="settings-field">
-              <label for="settingsAnthropicKey">Anthropic API key</label>
-              <div class="settings-input-row">
-                <input type="password" id="settingsAnthropicKey" class="settings-input" placeholder="sk-ant-..." autocomplete="off" />
-                <button type="button" class="settings-toggle-visibility" id="settingsAnthropicToggle" title="Show">Show</button>
+            <form id="settingsSecretsForm">
+              <input type="text" name="settingsSecretsUsername" autocomplete="username" value="" class="settings-input" aria-hidden="true" style="display:none" />
+              <div class="settings-field">
+                <label for="settingsAnthropicKey">Anthropic API key</label>
+                <div class="settings-input-row">
+                  <input
+                    type="password"
+                    id="settingsAnthropicKey"
+                    name="anthropic_api_key"
+                    class="settings-input"
+                    placeholder="sk-ant-..."
+                    autocomplete="new-password"
+                  />
+                  <button type="button" class="settings-toggle-visibility" id="settingsAnthropicToggle" title="Show">Show</button>
+                </div>
+                <span class="settings-masked" id="settingsAnthropicMasked"></span>
               </div>
-              <span class="settings-masked" id="settingsAnthropicMasked"></span>
-            </div>
-            <div class="settings-field">
-              <label for="settingsComposioKey">Composio API key</label>
-              <div class="settings-input-row">
-                <input type="password" id="settingsComposioKey" class="settings-input" placeholder="Composio key" autocomplete="off" />
-                <button type="button" class="settings-toggle-visibility" id="settingsComposioToggle" title="Show">Show</button>
+              <div class="settings-field">
+                <label for="settingsComposioKey">Composio API key</label>
+                <div class="settings-input-row">
+                  <input
+                    type="password"
+                    id="settingsComposioKey"
+                    name="composio_api_key"
+                    class="settings-input"
+                    placeholder="Composio key"
+                    autocomplete="new-password"
+                  />
+                  <button type="button" class="settings-toggle-visibility" id="settingsComposioToggle" title="Show">Show</button>
+                </div>
+                <span class="settings-masked" id="settingsComposioMasked"></span>
               </div>
-              <span class="settings-masked" id="settingsComposioMasked"></span>
-            </div>
-            <div class="settings-field">
-              <label for="settingsSmitheryKey">Smithery API key</label>
-              <div class="settings-input-row">
-                <input type="password" id="settingsSmitheryKey" class="settings-input" placeholder="Smithery key" autocomplete="off" />
-                <button type="button" class="settings-toggle-visibility" id="settingsSmitheryToggle" title="Show">Show</button>
+              <div class="settings-field">
+                <label for="settingsSmitheryKey">Smithery API key</label>
+                <div class="settings-input-row">
+                  <input
+                    type="password"
+                    id="settingsSmitheryKey"
+                    name="smithery_api_key"
+                    class="settings-input"
+                    placeholder="Smithery key"
+                    autocomplete="new-password"
+                  />
+                  <button type="button" class="settings-toggle-visibility" id="settingsSmitheryToggle" title="Show">Show</button>
+                </div>
+                <span class="settings-masked" id="settingsSmitheryMasked"></span>
               </div>
-              <span class="settings-masked" id="settingsSmitheryMasked"></span>
-            </div>
-            <div class="settings-field">
-              <label for="settingsDataforseoUsername">DataForSEO username</label>
-              <div class="settings-input-row">
-                <input type="password" id="settingsDataforseoUsername" class="settings-input" placeholder="login@example.com" autocomplete="off" />
-                <button type="button" class="settings-toggle-visibility" id="settingsDataforseoUsernameToggle" title="Show">Show</button>
+              <div class="settings-field">
+                <label for="settingsDataforseoUsername">DataForSEO username</label>
+                <div class="settings-input-row">
+                  <input
+                    type="text"
+                    id="settingsDataforseoUsername"
+                    name="dataforseo_username"
+                    class="settings-input"
+                    placeholder="login@example.com"
+                    autocomplete="username"
+                  />
+                  <button type="button" class="settings-toggle-visibility" id="settingsDataforseoUsernameToggle" title="Show">Show</button>
+                </div>
+                <span class="settings-masked" id="settingsDataforseoUsernameMasked"></span>
               </div>
-              <span class="settings-masked" id="settingsDataforseoUsernameMasked"></span>
-            </div>
-            <div class="settings-field">
-              <label for="settingsDataforseoPassword">DataForSEO password</label>
-              <div class="settings-input-row">
-                <input type="password" id="settingsDataforseoPassword" class="settings-input" placeholder="DataForSEO password" autocomplete="off" />
-                <button type="button" class="settings-toggle-visibility" id="settingsDataforseoPasswordToggle" title="Show">Show</button>
+              <div class="settings-field">
+                <label for="settingsDataforseoPassword">DataForSEO password</label>
+                <div class="settings-input-row">
+                  <input
+                    type="password"
+                    id="settingsDataforseoPassword"
+                    name="dataforseo_password"
+                    class="settings-input"
+                    placeholder="DataForSEO password"
+                    autocomplete="current-password"
+                  />
+                  <button type="button" class="settings-toggle-visibility" id="settingsDataforseoPasswordToggle" title="Show">Show</button>
+                </div>
+                <span class="settings-masked" id="settingsDataforseoPasswordMasked"></span>
               </div>
-              <span class="settings-masked" id="settingsDataforseoPasswordMasked"></span>
-            </div>
-            <button type="button" class="settings-save-btn" id="settingsSaveKeysBtn">Save keys</button>
+              <button type="button" class="settings-save-btn" id="settingsSaveKeysBtn">Save keys</button>
+            </form>
             <p class="settings-status" id="settingsKeysStatus"></p>
           </section>
           <section class="settings-section">

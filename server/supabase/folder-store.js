@@ -1,7 +1,9 @@
-import { supabase } from './client.js';
+import { getAdminClient } from './client.js';
+
+const db = () => getAdminClient();
 
 export async function createFolder(userId, name, type, parentId = null) {
-  const { data, error } = await supabase
+  const { data, error } = await db()
     .from('universal_folders')
     .insert([{ user_id: userId, name, type, parent_id: parentId }])
     .select()
@@ -12,7 +14,7 @@ export async function createFolder(userId, name, type, parentId = null) {
 }
 
 export async function getFolders(userId, type, parentId = null) {
-  let query = supabase
+  let query = db()
     .from('universal_folders')
     .select('*')
     .eq('user_id', userId)
@@ -30,7 +32,7 @@ export async function getFolders(userId, type, parentId = null) {
 }
 
 export async function renameFolder(folderId, userId, newName) {
-  const { data, error } = await supabase
+  const { data, error } = await db()
     .from('universal_folders')
     .update({ name: newName })
     .eq('id', folderId)
@@ -43,7 +45,7 @@ export async function renameFolder(folderId, userId, newName) {
 }
 
 export async function deleteFolder(folderId, userId) {
-  const { error } = await supabase
+  const { error } = await db()
     .from('universal_folders')
     .delete()
     .eq('id', folderId)
@@ -54,7 +56,7 @@ export async function deleteFolder(folderId, userId) {
 }
 
 export async function getBreadcrumbs(folderId, userId) {
-  const { data, error } = await supabase.rpc('get_universal_folder_breadcrumbs', {
+  const { data, error } = await db().rpc('get_universal_folder_breadcrumbs', {
     p_folder_id: folderId,
     p_user_id: userId
   });
