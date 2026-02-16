@@ -7,6 +7,7 @@
     "start": "electron .",
     "start:server": "cd server && node server.js",
     "start:all": "node scripts/start-all.js",
+    "cleanup:test-users": "bash scripts/cleanup-autotest-users.sh",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
