@@ -305,6 +305,14 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 let isShuttingDown = false;
 
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    providers: getAvailableProviders()
+  });
+});
+
 // Initialize Composio lazily (optional unless COMPOSIO_API_KEY is configured).
 ensureComposioClient();
 
@@ -2128,15 +2136,6 @@ app.get('/api/browser/status', requireAuth, (_req, res) => {
     headless: settings.headless || false,
     running: browserServer ? browserServer.getStatus().running : false,
     currentUrl: browserServer ? browserServer.getStatus().currentUrl : null
-  });
-});
-
-// Health check endpoint
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    providers: getAvailableProviders()
   });
 });
 
