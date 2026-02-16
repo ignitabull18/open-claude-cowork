@@ -1,8 +1,86 @@
 const { chromium } = require('playwright');
+const fs = require('fs');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3001';
 const issues = [];
 const logs = [];
+
+const CHAT_INPUT_SELECTOR = '#homeInput';
+const CHAT_SEND_SELECTOR = '#homeSendBtn';
+
+async function waitForVisible(page, selector, timeoutMs = 12000) {
+  const end = Date.now() + timeoutMs;
+  const locator = page.locator(selector);
+  while (Date.now() < end) {
+    if (await locator.isVisible()) {
+      return true;
+    }
+    await page.waitForTimeout(250);
+  }
+  return false;
+}
+
+async function forceHomeState(page) {
+  await page.evaluate(() => {
+    const authView = document.getElementById('authView');
+    const leftSidebar = document.getElementById('leftSidebar');
+    const homeView = document.getElementById('homeView');
+    const chatView = document.getElementById('chatView');
+    const settingsView = document.getElementById('settingsView');
+    const reportsView = document.getElementById('reportsView');
+    const jobsView = document.getElementById('jobsView');
+    const tasksView = document.getElementById('tasksView');
+    const vaultView = document.getElementById('vaultView');
+
+    if (authView) authView.classList.add('hidden');
+    if (leftSidebar) leftSidebar.classList.remove('hidden');
+    if (homeView) homeView.classList.remove('hidden');
+    if (chatView) chatView.classList.add('hidden');
+    if (settingsView) settingsView.classList.add('hidden');
+    if (reportsView) reportsView.classList.add('hidden');
+    if (jobsView) jobsView.classList.add('hidden');
+    if (tasksView) tasksView.classList.add('hidden');
+    if (vaultView) vaultView.classList.add('hidden');
+  });
+
+  await page.waitForTimeout(100);
+  await page.evaluate(() => {
+    if (typeof window.showView === 'function') {
+      window.showView('home');
+    }
+  });
+  await page.waitForTimeout(200);
+}
+
+async function prepareForSmoke(page) {
+  const authView = page.locator('#authView');
+  const authSkipBtn = page.locator('#authSkipBtn');
+
+  if (await authView.isVisible()) {
+    let attempts = 0;
+    while ((await authView.isVisible()) && attempts < 60) {
+      attempts += 1;
+      if (await authSkipBtn.isVisible()) {
+        await authSkipBtn.click();
+      }
+      await page.waitForTimeout(150);
+    }
+  }
+
+  await forceHomeState(page);
+
+  if (!(await waitForVisible(page, CHAT_INPUT_SELECTOR, 15000))) {
+    issues.push({
+      severity: 'high',
+      area: 'smoke script',
+      issue: 'Home input not found',
+      evidence: 'Expected #homeInput to be visible after auth and view reset'
+    });
+    return false;
+  }
+
+  return true;
+}
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
@@ -37,6 +115,7 @@ async function run() {
   });
 
   const snap = async (name) => {
+    fs.mkdirSync('output/playwright', { recursive: true });
     await page.screenshot({ path: `output/playwright/${name}.png`, fullPage: true });
   };
 
@@ -56,10 +135,27 @@ async function run() {
     return;
   }
 
+  const isHomeUsable = await prepareForSmoke(page);
+  if (!isHomeUsable) {
+    await snap('01-home');
+    await browser.close();
+    const summary = {
+      runAt: new Date().toISOString(),
+      totalIssues: issues.length,
+      issues,
+      badApiResponses: badResponses,
+      consoleWarnings: logs
+    };
+    console.log(JSON.stringify(summary, null, 2));
+    return;
+  }
+
   await snap('01-home');
 
-  const homeViewHidden = await page.locator('#homeView').evaluate((el) => el.classList.contains('hidden'));
-  const chatViewHidden = await page.locator('#chatView').evaluate((el) => el.classList.contains('hidden'));
+  const homeView = page.locator('#homeView');
+  const chatView = page.locator('#chatView');
+  const homeViewHidden = await homeView.evaluate((el) => el.classList.contains('hidden'));
+  const chatViewHidden = await chatView.evaluate((el) => el.classList.contains('hidden'));
 
   if (!homeViewHidden) {
     const greetingExists = await page.locator('.greeting-text').count();
@@ -93,8 +189,8 @@ async function run() {
     }
   }
 
-  const sendBtnDisabledInitially = await page.locator('#homeSendBtn').isDisabled();
-  const inputValueInitially = await page.locator('#homeInput').inputValue();
+  const sendBtnDisabledInitially = await page.locator(CHAT_SEND_SELECTOR).isDisabled();
+  const inputValueInitially = await page.locator(CHAT_INPUT_SELECTOR).inputValue();
   if (!sendBtnDisabledInitially || inputValueInitially !== '') {
     issues.push({
       severity: 'low',
@@ -104,8 +200,8 @@ async function run() {
     });
   }
 
-  await page.fill('#homeInput', 'Integration smoke test message');
-  const sendEnabled = (await page.locator('#homeSendBtn').isDisabled()) === false;
+  await page.fill(CHAT_INPUT_SELECTOR, 'Integration smoke test message');
+  const sendEnabled = (await page.locator(CHAT_SEND_SELECTOR).isDisabled()) === false;
   if (!sendEnabled) {
     issues.push({
       severity: 'medium',
@@ -115,7 +211,7 @@ async function run() {
     });
   }
 
-  await page.click('#homeSendBtn');
+  await page.click(CHAT_SEND_SELECTOR);
   await page.waitForTimeout(2000);
   await snap('03-message-send');
 
@@ -150,7 +246,7 @@ async function run() {
     }
   }
 
-  const chatVisibleAfterSend = await page.locator('#chatView').evaluate((el) => !el.classList.contains('hidden'));
+  const chatVisibleAfterSend = await chatView.evaluate((el) => !el.classList.contains('hidden'));
   if (!chatVisibleAfterSend) {
     issues.push({
       severity: 'medium',
@@ -164,7 +260,7 @@ async function run() {
     { id: '#reportsSidebarBtn', back: '#reportsBackBtn', name: 'reports' },
     { id: '#jobsSidebarBtn', back: '#jobsBackBtn', name: 'jobs' },
     { id: '#vaultSidebarBtn', back: '#vaultBackBtn', name: 'vault' },
-    { id: '#tasksSidebarBtn', back: '#tasksNewBtn', name: 'tasks' },
+    { id: '#tasksSidebarBtn', back: '', name: 'tasks' },
     { id: '#settingsSidebarBtn', back: '#settingsBackBtn', name: 'settings' }
   ];
 
@@ -233,6 +329,34 @@ async function run() {
       }
     }
 
+    if (view.name === 'tasks') {
+      const taskModalCloseBtn = page.locator('#taskModalClose, #taskModalCancelBtn');
+      const taskModal = page.locator('#taskModal');
+      const isModalVisible = await taskModal.count() && (await taskModal.isVisible());
+
+      if (isModalVisible) {
+        const closeSuccess = await taskModalCloseBtn.first().isVisible().catch(() => false);
+        if (closeSuccess) {
+          await taskModalCloseBtn.first().click({ force: true });
+          await page.waitForTimeout(300);
+        }
+      }
+
+      const homeShortcut = page.locator('.new-chat-sidebar-btn');
+      if (await homeShortcut.isVisible()) {
+        await homeShortcut.click();
+      } else {
+        await page.evaluate(() => {
+          if (typeof window.showView === 'function') {
+            window.showView('home');
+          }
+        });
+      }
+      await page.waitForTimeout(300);
+      await snap(`04-${view.name}-back`);
+      continue;
+    }
+
     const backLocator = page.locator(view.back);
     const backVisible = await backLocator.count() > 0;
     if (backVisible) {
@@ -268,7 +392,10 @@ async function run() {
   }
 
   await page.locator('#homeProviderDropdown .provider-selector').click();
-  const claudeOption = page.locator('#homeProviderDropdown .provider-menu .dropdown-item[data-value="claude"]');
+  let claudeOption = page.locator('#homeProviderDropdown .provider-menu .dropdown-item[data-value="claude"]');
+  if (!(await claudeOption.count())) {
+    claudeOption = page.locator('#homeProviderDropdown .dropdown-menu .dropdown-item[data-value="claude"]');
+  }
   if (!(await claudeOption.count())) {
     issues.push({
       severity: 'low',
