@@ -18,7 +18,7 @@ Tests the fundamental functionality of the application across all major features
 | 2 | Home view greeting | ✅ Pass | Greeting text and tagline present |
 | 3 | Chat interface elements | ✅ Pass | Input, buttons, controls visible |
 | 4 | Provider/model selection | ✅ Pass | Dropdowns functional |
-| 5 | Provider dropdown menu | ✅ Pass | Claude & Opencode options |
+| 5 | Provider dropdown menu | ✅ Pass | Claude-only options |
 | 6 | Model dropdown menu | ✅ Pass | Opus, Sonnet, Haiku options |
 | 7 | Settings navigation | ✅ Pass | Opens and navigates back |
 | 8 | Settings back button | ✅ Pass | Returns to home view |

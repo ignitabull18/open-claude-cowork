@@ -39,7 +39,7 @@ describe('session-store.js', () => {
 
     it('returns null when session exists for different provider', async () => {
       seedTable('provider_sessions', [
-        { chat_id: 'chat-1', provider: 'opencode', session_id: 'sess-xyz', user_id: 'user-1' }
+        { chat_id: 'chat-1', provider: 'other-provider', session_id: 'sess-xyz', user_id: 'user-1' }
       ]);
 
       const result = await getProviderSession('chat-1', 'claude', 'user-1');
@@ -92,15 +92,15 @@ describe('session-store.js', () => {
 
     it('does not affect other providers for the same chat', async () => {
       seedTable('provider_sessions', [
-        { chat_id: 'chat-1', provider: 'opencode', session_id: 'sess-opencode', user_id: 'user-1' }
+        { chat_id: 'chat-1', provider: 'other-provider', session_id: 'sess-other', user_id: 'user-1' }
       ]);
 
       await setProviderSession('chat-1', 'claude', 'sess-claude', 'user-1');
 
-      const opencode = await getProviderSession('chat-1', 'opencode', 'user-1');
+      const otherProvider = await getProviderSession('chat-1', 'other-provider', 'user-1');
       const claude = await getProviderSession('chat-1', 'claude', 'user-1');
 
-      expect(opencode).toBe('sess-opencode');
+      expect(otherProvider).toBe('sess-other');
       expect(claude).toBe('sess-claude');
     });
   });

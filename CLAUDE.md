@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Open Claude Cowork is an Electron desktop chat application powered by Claude Agent SDK, Composio Tool Router, and optional Smithery Connect for MCP tools. It includes two main components:
 
-1. **Desktop App** — Electron + Express chat interface with multi-provider AI support (Claude Agent SDK + Opencode SDK)
+1. **Desktop App** — Electron + Express chat interface using Claude Agent SDK for chat responses
 2. **Clawd** — A messaging bot (`clawd/`) that connects Claude to WhatsApp, Telegram, Signal, and iMessage
 
 ## Running the App
@@ -65,11 +65,10 @@ Tests are configured and run via `npm test` (Vitest unit/integration suite).
 
 ### Provider System
 
-The backend uses a provider abstraction (`server/providers/`) so the frontend can switch between AI backends per-request:
+The backend uses a provider abstraction (`server/providers/`) so the frontend can send `provider` and `model` in each chat request:
 
 - `BaseProvider` — Abstract class defining `query()` (async generator yielding SSE chunks), `abort()`, session management
 - `ClaudeProvider` — Wraps `@anthropic-ai/claude-agent-sdk` `query()`. Sessions are resumed via `session_id` from system init chunks.
-- `OpencodeProvider` — Wraps `@opencode-ai/sdk`. Creates its own local server on port 4096, uses event subscription for streaming. MCP config is written to `server/opencode.json` at runtime.
 
 Providers are registered in `server/providers/index.js` and cached as singletons. The frontend sends `provider` and `model` in each chat request.
 
@@ -102,7 +101,7 @@ The backend integrates with Supabase for persistence, auth, file storage, and ve
 
 ### Composio Integration
 
-On startup, the server initializes a Composio session (`@composio/core`) which provides an MCP URL. This URL is passed to providers as `mcpServers.composio` for tool access (500+ app integrations). For Opencode, the MCP config is also written to `server/opencode.json`.
+On startup, the server initializes a Composio session (`@composio/core`) which provides an MCP URL. This URL is passed to providers as `mcpServers.composio` for tool access (500+ app integrations).
 
 ### Smithery Integration
 
@@ -126,7 +125,7 @@ Separate Node.js app (ESM) with its own `package.json` and dependency tree. Entr
 - Frontend state is persisted to Supabase (when configured) with `localStorage` fallback. Provider/model selection always uses localStorage.
 - `renderer/auth.js` handles Supabase Auth (CDN-loaded, no bundler). Token refresh is automatic.
 - Streaming uses Server-Sent Events with heartbeat comments every 15s
-- `server/opencode.json` is auto-generated at runtime — do not manually edit
+- No provider-specific runtime config files are written by this fork.
 - The `.env` file in the project root is shared between the desktop app and server
 
 ## Git Workflow Rules

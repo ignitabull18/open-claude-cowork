@@ -73,7 +73,7 @@ describe('report-store.js', () => {
     it('calls report_provider_usage RPC', async () => {
       const mockData = [
         { provider: 'claude', count: 50 },
-        { provider: 'opencode', count: 20 }
+        { provider: 'other-provider', count: 20 }
       ];
       seedRpc('report_provider_usage', mockData);
 

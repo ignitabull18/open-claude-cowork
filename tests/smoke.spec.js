@@ -292,9 +292,6 @@ test.describe('Open Claude Cowork - Smoke Tests', () => {
 
     // Check for Claude option
     await expect(page.locator('#homeProviderDropdown .dropdown-item[data-value="claude"]')).toBeVisible();
-
-    // Check for Opencode option
-    await expect(page.locator('#homeProviderDropdown .dropdown-item[data-value="opencode"]')).toBeVisible();
   });
 
   test('should open model dropdown menu', async ({ page }) => {

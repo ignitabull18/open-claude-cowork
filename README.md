@@ -120,7 +120,7 @@ See [Secure Clawdbot Documentation](./clawd/README.md) for full setup.
 ## Features
 
 ### Open Claude Cowork
-- **Multi-Provider Support** - Claude Agent SDK or Opencode for different models
+- **AI Provider** - Claude Agent SDK
 - **Persistent Sessions** - Context maintained across messages
 - **Real-time Streaming** - Token-by-token response display
 - **Tool Visualization** - See tool inputs/outputs in the sidebar
@@ -142,7 +142,7 @@ See [Secure Clawdbot Documentation](./clawd/README.md) for full setup.
 |-----------|------------|
 | Desktop | Electron.js |
 | Backend | Node.js + Express |
-| AI | Claude Agent SDK + Opencode SDK |
+| AI | Claude Agent SDK |
 | Tools | Composio Tool Router + MCP |
 | Streaming | Server-Sent Events (SSE) |
 
@@ -155,7 +155,7 @@ See [Secure Clawdbot Documentation](./clawd/README.md) for full setup.
 You need:
 - **Anthropic API key** from [console.anthropic.com](https://console.anthropic.com)
 - **Composio API key** from [app.composio.dev](https://app.composio.dev)
-- **Opencode API key** (optional) from [opencode.dev](https://opencode.dev)
+- **OpenAI API key** (optional) from [platform.openai.com](https://platform.openai.com) for memory/search
 
 ```bash
 cp .env.example .env
@@ -187,7 +187,7 @@ open-claude-cowork/
 ├── main.js              # Electron main process
 ├── renderer/            # Frontend UI
 ├── server/              # Backend + providers
-│   ├── providers/       # Claude & Opencode implementations
+│   ├── providers/       # Claude implementation
 │   └── server.js        # Express server
 ├── clawd/               # Secure Clawdbot (messaging bot)
 │   ├── cli.js           # Entry point

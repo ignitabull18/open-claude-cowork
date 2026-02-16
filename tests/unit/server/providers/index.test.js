@@ -2,8 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock provider classes BEFORE importing the module under test
 const mockClaudeCleanup = vi.fn();
-const mockOpencodeCleanup = vi.fn();
-const mockOpencodeInitialize = vi.fn();
 
 vi.mock('../../../../server/providers/claude-provider.js', () => {
   class MockClaudeProvider {
@@ -15,19 +13,6 @@ vi.mock('../../../../server/providers/claude-provider.js', () => {
     async cleanup() { mockClaudeCleanup(); }
   }
   return { ClaudeProvider: MockClaudeProvider };
-});
-
-vi.mock('../../../../server/providers/opencode-provider.js', () => {
-  class MockOpencodeProvider {
-    constructor(config) {
-      this.config = config;
-      this.providerName = 'opencode';
-    }
-    get name() { return 'opencode'; }
-    async initialize() { mockOpencodeInitialize(); }
-    async cleanup() { mockOpencodeCleanup(); }
-  }
-  return { OpencodeProvider: MockOpencodeProvider };
 });
 
 // Mock base-provider (re-exported by index.js)
@@ -65,17 +50,9 @@ describe('providers/index', () => {
       expect(provider.providerName).toBe('claude');
     });
 
-    it('returns an OpencodeProvider instance for "opencode"', () => {
-      const provider = getProvider('opencode');
-      expect(provider.providerName).toBe('opencode');
-    });
-
     it('is case-insensitive', () => {
       const upper = getProvider('CLAUDE');
       expect(upper.providerName).toBe('claude');
-
-      const mixed = getProvider('Opencode');
-      expect(mixed.providerName).toBe('opencode');
     });
 
     it('defaults to "claude" when providerName is null or undefined', () => {
@@ -112,19 +89,12 @@ describe('providers/index', () => {
 
     it('includes available providers in the error message', () => {
       expect(() => getProvider('invalid')).toThrow(/claude/);
-      expect(() => getProvider('invalid')).toThrow(/opencode/);
     });
   });
 
   describe('getAvailableProviders()', () => {
-    it('returns array containing "claude" and "opencode"', () => {
-      const available = getAvailableProviders();
-      expect(available).toContain('claude');
-      expect(available).toContain('opencode');
-    });
-
-    it('returns at least 2 providers', () => {
-      expect(getAvailableProviders().length).toBeGreaterThanOrEqual(2);
+    it('returns array containing only "claude" by default', () => {
+      expect(getAvailableProviders()).toEqual(['claude']);
     });
   });
 
@@ -164,12 +134,10 @@ describe('providers/index', () => {
     it('calls cleanup on cached provider instances', async () => {
       // Create instances to populate the cache
       getProvider('claude');
-      getProvider('opencode');
 
       await clearProviderCache();
 
       expect(mockClaudeCleanup).toHaveBeenCalled();
-      expect(mockOpencodeCleanup).toHaveBeenCalled();
     });
 
     it('clears the cache so new instances are created on next getProvider()', async () => {
@@ -187,14 +155,9 @@ describe('providers/index', () => {
   });
 
   describe('initializeProviders()', () => {
-    it('calls initialize on the opencode provider', async () => {
+    it('does not throw when initialization is called', async () => {
       await initializeProviders();
-      expect(mockOpencodeInitialize).toHaveBeenCalled();
-    });
-
-    it('does not throw when initialization fails', async () => {
-      mockOpencodeInitialize.mockRejectedValue(new Error('init failed'));
-      await expect(initializeProviders()).resolves.toBeUndefined();
+      expect(true).toBe(true);
     });
   });
 });

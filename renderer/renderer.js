@@ -214,18 +214,6 @@ const providerModels = {
     { value: 'claude-opus-4-5-20250514', label: 'Opus 4.5', desc: 'Most capable for complex work' },
     { value: 'claude-sonnet-4-5-20250514', label: 'Sonnet 4.5', desc: 'Best for everyday tasks', default: true },
     { value: 'claude-haiku-4-5-20250514', label: 'Haiku 4.5', desc: 'Fastest for quick answers' }
-  ],
-  opencode: [
-    // Opencode Zen (Free)
-    { value: 'opencode/big-pickle', label: 'Big Pickle', desc: 'Reasoning model', default: true },
-    { value: 'opencode/gpt-5-nano', label: 'GPT-5 Nano', desc: 'OpenAI reasoning' },
-    { value: 'opencode/glm-4.7-free', label: 'GLM-4.7', desc: 'Zhipu GLM free' },
-    { value: 'opencode/grok-code', label: 'Grok Code Fast', desc: 'xAI coding model' },
-    { value: 'opencode/minimax-m2.1-free', label: 'MiniMax M2.1', desc: 'MiniMax free' },
-    // Anthropic Claude
-    { value: 'anthropic/claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5', desc: 'Best balance' },
-    { value: 'anthropic/claude-opus-4-5-20251101', label: 'Claude Opus 4.5', desc: 'Most capable' },
-    { value: 'anthropic/claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', desc: 'Fastest' }
   ]
 };
 
@@ -635,7 +623,7 @@ function loadAllChatsFromLocalStorage() {
 
 // Update provider UI across all dropdowns
 function updateProviderUI(provider) {
-  const providerLabel = provider === 'claude' ? 'Claude' : 'Opencode';
+  const providerLabel = providerModels[provider]?.length ? 'Claude' : 'Claude';
   document.querySelectorAll('.provider-selector .provider-label').forEach(l => {
     l.textContent = providerLabel;
   });

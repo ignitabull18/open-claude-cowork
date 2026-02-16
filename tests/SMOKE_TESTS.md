@@ -14,7 +14,7 @@ The smoke test suite (`smoke.spec.js`) covers **29 comprehensive tests** organiz
 - ✅ Application loads successfully with proper title and main container
 - ✅ Home view displays greeting and tagline
 - ✅ Chat interface elements (message input, send button, attach, vault, thinking buttons)
-- ✅ Provider and model dropdown menus (Claude, Opencode, Opus, Sonnet, Haiku)
+- ✅ Provider and model dropdown menus (Claude, Opus, Sonnet, Haiku)
 - ✅ Settings panel navigation (open and back)
 - ✅ Message input handling and send button state management
 - ✅ Left sidebar with all navigation buttons

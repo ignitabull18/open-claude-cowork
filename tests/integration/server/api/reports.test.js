@@ -165,7 +165,7 @@ describe('Report endpoints', () => {
     it('returns provider usage breakdown', async () => {
       const mockData = [
         { provider: 'claude', message_count: 30 },
-        { provider: 'opencode', message_count: 12 }
+        { provider: 'other-provider', message_count: 12 }
       ];
       seedRpc('report_provider_usage', mockData);
 

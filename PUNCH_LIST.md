@@ -44,8 +44,6 @@
 - [x] **Provider/chat ownership and ownership-aware persistence** (`server/providers/base-provider.js`, `server/supabase/chat-store.js`, `server/server.js`)
   - Permission/abort/abort-flow validation tightened; ownership checks in chat write paths made explicit.
 
-- [x] **Committed secret/config hygiene** (`server/opencode.json`)
-  - Scrubbed committed hardcoded API key placeholder and kept key in environment-driven path only.
 
 - [x] **Plugin-supplied local MCP execution is opt-in only** (`server/plugins/plugin-manager.js`)
   - Fixed by requiring explicit operator opt-in (`PLUGIN_ALLOW_LOCAL_MCP=true`) before allowing local MCP command definitions.

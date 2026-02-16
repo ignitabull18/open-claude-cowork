@@ -68,13 +68,13 @@ export async function createTestApp(opts = {}) {
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      providers: ['claude', 'opencode']
+      providers: ['claude']
     });
   });
 
   // ===================== PROVIDERS =====================
   app.get('/api/providers', (_req, res) => {
-    res.json({ providers: ['claude', 'opencode'], default: 'claude' });
+    res.json({ providers: ['claude'], default: 'claude' });
   });
 
   // ===================== CHAT CRUD =====================

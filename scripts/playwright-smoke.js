@@ -269,13 +269,12 @@ async function run() {
 
   await page.locator('#homeProviderDropdown .provider-selector').click();
   const claudeOption = page.locator('#homeProviderDropdown .provider-menu .dropdown-item[data-value="claude"]');
-  const opencodeOption = page.locator('#homeProviderDropdown .provider-menu .dropdown-item[data-value="opencode"]');
-  if (!(await claudeOption.count()) || !(await opencodeOption.count())) {
+  if (!(await claudeOption.count())) {
     issues.push({
       severity: 'low',
       area: 'chat controls',
-      issue: 'Provider dropdown missing expected options',
-      evidence: `claude=${await claudeOption.count()}, opencode=${await opencodeOption.count()}`
+      issue: 'Provider dropdown missing Claude option',
+      evidence: `claude=${await claudeOption.count()}`
     });
   }
   await page.click('body', { position: { x: 0, y: 0 } });

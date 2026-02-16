@@ -11,8 +11,7 @@ export default defineConfig({
       // same path so vi.mock() intercepts transitive imports from source files
       '@supabase/supabase-js': path.resolve(__dirname, 'server/node_modules/@supabase/supabase-js'),
       'playwright': path.resolve(__dirname, 'server/node_modules/playwright'),
-      '@anthropic-ai/claude-agent-sdk': path.resolve(__dirname, 'server/node_modules/@anthropic-ai/claude-agent-sdk'),
-      '@opencode-ai/sdk': path.resolve(__dirname, 'server/node_modules/@opencode-ai/sdk')
+      '@anthropic-ai/claude-agent-sdk': path.resolve(__dirname, 'server/node_modules/@anthropic-ai/claude-agent-sdk')
     }
   },
   test: {
@@ -23,7 +22,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['server/**/*.js'],
-      exclude: ['server/opencode.json', 'server/node_modules/**']
+      exclude: ['server/node_modules/**']
     },
     testTimeout: 15000,
     hookTimeout: 15000

@@ -487,10 +487,6 @@ async function initializeComposioSession() {
     defaultComposioSession = await composio.create(defaultUserId);
     setComposioSession(defaultUserId, defaultComposioSession);
     console.log('[COMPOSIO] Session ready with MCP URL:', defaultComposioSession.mcp.url);
-
-    const mcpServers = buildMcpServers(defaultComposioSession);
-    updateOpencodeConfig(mcpServers);
-    console.log('[OPENCODE] Updated opencode.json with MCP config');
   } catch (error) {
     console.error('[COMPOSIO] Failed to pre-initialize session:', error.message);
   }
@@ -529,10 +525,6 @@ async function initializeSmitheryConnection() {
     const config = await getSmitheryMcpConfig();
     if (config) {
       console.log('[SMITHERY] Connection ready');
-      if (defaultComposioSession) {
-        const mcpServers = buildMcpServers(defaultComposioSession);
-        updateOpencodeConfig(mcpServers);
-      }
     }
   } catch (err) {
     console.error('[SMITHERY] Failed to pre-initialize:', err.message);
@@ -544,9 +536,6 @@ function initializeDataforseoConfig() {
   const config = getDataforseoMcpConfig();
   if (config) {
     console.log('[DATAFORSEO] MCP config ready (official + extra, local stdio)');
-    if (defaultComposioSession) {
-      updateOpencodeConfig(buildMcpServers(defaultComposioSession));
-    }
   }
 }
 
@@ -575,7 +564,7 @@ function buildSystemPrompt() {
 }
 
 /**
- * Build the MCP servers config used by both Claude and Opencode providers.
+ * Build the MCP servers config used by the Claude provider.
  * Merges Composio (from session), Smithery (when key and connection exist), and user-defined MCP from user-settings.
  */
 function buildMcpServers(composioSession) {
@@ -641,27 +630,6 @@ function buildMcpServers(composioSession) {
   }
 
   return mcpServers;
-}
-
-/** Write full MCP config to opencode.json (Opencode reads this file). */
-function updateOpencodeConfig(mcpServers) {
-  const opencodeConfigPath = path.join(__dirname, 'opencode.json');
-  const mcp = {};
-  for (const [name, config] of Object.entries(mcpServers)) {
-    // Skip SDK MCP servers (in-process, no type/url/command fields) — they only work with Claude provider
-    if (!config.type && !config.url && !config.command) continue;
-    if (config.type === 'http' || config.type === 'remote') {
-      mcp[name] = { type: 'remote', url: config.url, headers: config.headers || {} };
-    } else if (config.type === 'local') {
-      mcp[name] = {
-        type: 'local',
-        command: config.command,
-        args: config.args,
-        environment: config.environment || {}
-      };
-    }
-  }
-  fs.writeFileSync(opencodeConfigPath, JSON.stringify({ mcp }, null, 2));
 }
 
 // Middleware
@@ -1569,10 +1537,6 @@ app.post('/api/chat', requireAuth, rateLimit.chat, async (req, res) => {
       composioSession = await composio.create(userId);
       setComposioSession(userId, composioSession);
       console.log('[COMPOSIO] Session created with MCP URL:', composioSession.mcp.url);
-
-      const mcpServers = buildMcpServers(composioSession);
-      updateOpencodeConfig(mcpServers);
-      console.log('[OPENCODE] Updated opencode.json with MCP config');
     }
 
     // Ensure Smithery connection is ready when key is set (populates defaultSmitheryMcpConfig)
@@ -1581,9 +1545,8 @@ app.post('/api/chat', requireAuth, rateLimit.chat, async (req, res) => {
     // Get the provider instance
     const provider = getProvider(providerName);
 
-    // Build MCP servers config - passed to Claude; Opencode reads from opencode.json
+    // Build MCP servers config for Claude provider
     const mcpServers = buildMcpServers(composioSession);
-    updateOpencodeConfig(mcpServers);
 
     console.log('[CHAT] Using provider:', provider.name);
     console.log('[CHAT] All stored sessions:', Array.from(provider.sessions.entries()));
@@ -2011,11 +1974,6 @@ async function initializeBrowser() {
     console.log('[BROWSER] Built-in browser automation ready (lazy init, mode:', mode + ')');
   }
 
-  // Refresh MCP config if Composio session exists
-  if (defaultComposioSession) {
-    const mcpServers = buildMcpServers(defaultComposioSession);
-    updateOpencodeConfig(mcpServers);
-  }
 }
 
 // ==================== DOCUMENT GENERATION ====================
@@ -2036,11 +1994,6 @@ function initializeDocuments() {
   documentMcpServer = createDocumentMcpServer(outputDir);
   console.log('[DOCUMENTS] Document generation ready, output:', outputDir);
 
-  // Refresh MCP config if Composio session exists
-  if (defaultComposioSession) {
-    const mcpServers = buildMcpServers(defaultComposioSession);
-    updateOpencodeConfig(mcpServers);
-  }
 }
 
 // List generated documents

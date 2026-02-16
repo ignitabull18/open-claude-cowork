@@ -187,7 +187,7 @@ describe('web-api.js electronAPI polyfill', () => {
       const api = loadWebApi();
       mockFetch.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ providers: ['claude', 'opencode'], default: 'claude' })
+        json: () => Promise.resolve({ providers: ['claude'], default: 'claude' })
       });
 
       const result = await api.getProviders();

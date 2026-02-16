@@ -142,7 +142,6 @@ Then open http://localhost:3001 in a browser.
 - [ ] **Coolify:** Create a Coolify project, connect this repo, set port 3001 and env vars, then deploy and confirm the web UI and chat work.
 - [ ] **Optional — Sync from upstream:** Periodically pull from `ComposioHQ/open-claude-cowork` and merge or rebase: `git fetch upstream && git merge upstream/main` (or your workflow).
 - [ ] **Optional — Custom domain:** In Coolify, attach a custom domain and enable HTTPS if desired; the app uses relative URLs so no code change is needed.
-- [ ] **Optional — Opencode provider:** The server starts without Opencode; if you want that provider, configure `OPENCODE_*` / `OPENCODE_SERVER_PASSWORD` and any related env in Coolify.
 
 ---
 
