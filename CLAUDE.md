@@ -128,3 +128,8 @@ Separate Node.js app (ESM) with its own `package.json` and dependency tree. Entr
 - Streaming uses Server-Sent Events with heartbeat comments every 15s
 - `server/opencode.json` is auto-generated at runtime — do not manually edit
 - The `.env` file in the project root is shared between the desktop app and server
+
+## Git Workflow Rules
+
+- Push only to your own branch remote (`origin`).
+- Do not push to `upstream`/upstream branches unless explicitly requested.
