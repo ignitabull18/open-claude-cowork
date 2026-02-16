@@ -595,6 +595,7 @@ const chatHistoryList = document.getElementById('chatHistoryList');
 const leftSidebar = document.getElementById('leftSidebar');
 const leftSidebarToggle = document.getElementById('leftSidebarToggle');
 const leftSidebarExpand = document.getElementById('leftSidebarExpand');
+const navRail = document.querySelector('.nav-rail');
 
 // DOM Elements - Settings
 const settingsView = document.getElementById('settingsView');
@@ -809,21 +810,19 @@ async function init() {
   // Initialize auth — gate the app on auth state
   if (window.appAuth) {
     window.appAuth.initAuth((session, meta) => {
-      if (meta?.skipped) {
-        // Supabase not configured — fall through to normal flow
-        loadAllChats();
-        renderChatHistory();
-        homeInput.focus();
+      if (meta?.error) {
+        isAuthEnabled = true;
+        showAuthView();
+        showAuthError(meta.error);
         return;
       }
       isAuthEnabled = true;
       onAuthReady(session);
     });
   } else {
-    // No auth module — fall through to normal flow
-    loadAllChats();
-    renderChatHistory();
-    homeInput.focus();
+    isAuthEnabled = true;
+    showAuthView();
+    showAuthError('Authentication module is unavailable. Reloading may fix this issue.');
   }
 }
 
@@ -841,15 +840,35 @@ function onAuthReady(session) {
 function showAuthView() {
   if (authView) {
     authView.classList.remove('hidden');
+    if (navRail) {
+      navRail.classList.add('hidden');
+    }
     homeView.classList.add('hidden');
     chatView.classList.add('hidden');
     leftSidebar.classList.add('hidden');
+    if (settingsView) settingsView.classList.add('hidden');
+    const dbView = document.getElementById('dbView');
+    if (dbView) dbView.classList.add('hidden');
+    const reportsView = document.getElementById('reportsView');
+    if (reportsView) reportsView.classList.add('hidden');
+    const jobsView = document.getElementById('jobsView');
+    if (jobsView) jobsView.classList.add('hidden');
+    const tasksView = document.getElementById('tasksView');
+    if (tasksView) tasksView.classList.add('hidden');
+    if (vaultView) vaultView.classList.add('hidden');
+    if (sidebar) sidebar.classList.add('hidden');
+    if (rightSidebarExpand) rightSidebarExpand.classList.add('hidden');
+    hideAuthMessages();
   }
 }
 
 // Show the app after successful auth
 function showAppAfterAuth(session) {
   if (authView) authView.classList.add('hidden');
+  if (navRail) {
+    navRail.classList.remove('hidden');
+  }
+  hideAuthMessages();
   leftSidebar.classList.remove('hidden');
 
   // Update user display
@@ -1242,21 +1261,10 @@ function setupAuthListeners() {
     }
   });
 
-  // Skip auth
-if (authSkipBtn) {
-  authSkipBtn.addEventListener('click', () => {
-    isAuthEnabled = false;
-    if (window.electronAPI?.setAuthToken) {
-      window.electronAPI.setAuthToken(null);
-    }
-    if (authView) authView.classList.add('hidden');
-    leftSidebar.classList.remove('hidden');
-    loadAllChats();
-    renderChatHistory();
-    showView('home');
-    homeInput.focus();
-  });
-}
+  // Skip auth is intentionally disabled — all users must authenticate.
+  if (authSkipBtn) {
+    authSkipBtn.classList.add('hidden');
+  }
 
   // Sign out
   const legacySignoutBtn = document.getElementById('signoutSidebarBtn');
@@ -1300,6 +1308,7 @@ async function handleSignOut() {
   }
 
   showAuthView();
+  showAuthError('You have been signed out.');
 }
 
 function showAppError(message, timeoutMs = 5000) {
@@ -3264,6 +3273,12 @@ function switchToChatView() {
  */
 function showView(viewName) {
   console.log('[showView] Switching to:', viewName);
+  if (!useApi()) {
+    showAuthView();
+    showAuthError('Sign in is required to continue.');
+    return;
+  }
+
   // If auth flow is still visible for any reason, always dismiss it when switching app views.
   if (authView) {
     authView.classList.add('hidden');

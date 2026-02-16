@@ -14,8 +14,8 @@
         const config = await res.json();
 
       if (!config.supabaseUrl || !config.supabaseAnonKey) {
-        console.log('[AUTH] Supabase not configured — skipping auth');
-        if (onReady) onReady(null, { skipped: true });
+        const err = new Error('Auth service is not configured');
+        if (onReady) onReady(null, { error: err.message });
         return;
       }
 
@@ -40,9 +40,9 @@
       }
 
       if (onReady) onReady(session);
-    } catch (err) {
-      console.error('[AUTH] Init failed:', err);
-      if (onReady) onReady(null, { skipped: true, error: err?.message || String(err) });
+  } catch (err) {
+    console.error('[AUTH] Init failed:', err);
+      if (onReady) onReady(null, { error: err?.message || String(err) });
     }
   }
 

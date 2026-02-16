@@ -31,7 +31,7 @@ function getActorUserId(req) {
 /**
  * Express middleware that validates a Supabase JWT from the Authorization header.
  * Sets req.user = { id, email, role } on success.
- * Falls back to anonymous identity when ALLOW_ANONYMOUS=true and no token is provided.
+ * No anonymous fallback is allowed here.
  */
 export async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -49,12 +49,6 @@ export async function requireAuth(req, res, next) {
     } catch (err) {
       return res.status(401).json({ error: 'Auth verification failed' });
     }
-  }
-
-  // No token provided
-  if (process.env.ALLOW_ANONYMOUS === 'true') {
-    req.user = { id: getActorUserId({ ...req, user: { id: 'anonymous' } }), email: null, role: 'anon' };
-    return next();
   }
 
   return res.status(401).json({ error: 'Authentication required' });
