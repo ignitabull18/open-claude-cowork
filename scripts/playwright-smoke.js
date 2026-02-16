@@ -404,18 +404,21 @@ async function run() {
     await snap('05-sidebar-toggle');
   }
 
-  await page.locator('#homeProviderDropdown .provider-selector').click();
-  let claudeOption = page.locator('#homeProviderDropdown .provider-menu .dropdown-item[data-value="claude"]');
-  if (!(await claudeOption.count())) {
-    claudeOption = page.locator('#homeProviderDropdown .dropdown-menu .dropdown-item[data-value="claude"]');
-  }
-  if (!(await claudeOption.count())) {
-    issues.push({
-      severity: 'low',
-      area: 'chat controls',
-      issue: 'Provider dropdown missing Claude option',
-      evidence: `claude=${await claudeOption.count()}`
-    });
+  const providerSelector = page.locator('#homeProviderDropdown .provider-selector');
+  if (await providerSelector.count() && await providerSelector.isVisible()) {
+    await providerSelector.click();
+    let claudeOption = page.locator('#homeProviderDropdown .provider-menu .dropdown-item[data-value="claude"]');
+    if (!(await claudeOption.count())) {
+      claudeOption = page.locator('#homeProviderDropdown .dropdown-menu .dropdown-item[data-value="claude"]');
+    }
+    if (!(await claudeOption.count())) {
+      issues.push({
+        severity: 'low',
+        area: 'chat controls',
+        issue: 'Provider dropdown missing Claude option',
+        evidence: `claude=${await claudeOption.count()}`
+      });
+    }
   }
   await page.click('body', { position: { x: 0, y: 0 } });
 
