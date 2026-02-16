@@ -3,12 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; base-uri 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:3001 https://*.supabase.co; font-src 'self'; object-src 'none'; frame-src 'none';"
+  >
   <title>Claude</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/marked@17.0.2/lib/marked.umd.js"
+    integrity="sha384-HQ7B/VBz5B0fo8GBiEFD/BZsAVXM9iDzC+hpeY1M1cpYezmRrwJSQh5MkTEI8G/H"
+    crossorigin="anonymous"
+  ></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+    integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
+    crossorigin="anonymous"
+  ></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js"
+    integrity="sha384-80VlBZnyAwkkqtSfg5NhPyZff6nU4K/qniLBL8Jnm4KDv6jZhLiYtJbhglg/i9ww"
+    crossorigin="anonymous"
+  ></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.95.3/dist/umd/supabase.min.js"
+    integrity="sha384-aRAaCbKYByQpx0fjPuC0PQ9P9moWMEsHXP9tyzP7tbyD5fPK6oTp+THsxdWiq02L"
+    crossorigin="anonymous"
+  ></script>
   <script src="web-api.js"></script>
   <script src="auth.js"></script>
 </head>
@@ -29,7 +49,7 @@
           </svg>
           <span>New Chat</span>
         </button>
-        <button class="sidebar-collapse-btn" id="leftSidebarToggle" title="Collapse sidebar">
+        <button class="sidebar-collapse-btn" id="leftSidebarToggle" title="Collapse sidebar" aria-label="Collapse sidebar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
@@ -101,7 +121,7 @@
     </aside>
 
     <!-- Left Sidebar Expand Button (visible when collapsed) -->
-    <button class="left-sidebar-expand-btn" id="leftSidebarExpand" title="Expand chat history">
+    <button class="left-sidebar-expand-btn" id="leftSidebarExpand" title="Expand chat history" aria-label="Expand chat history">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="9 18 15 12 9 6"></polyline>
       </svg>
@@ -161,20 +181,20 @@
             <div class="input-controls">
               <div class="left-controls">
                 <input type="file" id="homeFileInput" class="file-input-hidden" multiple />
-                <button type="button" class="control-btn attach-btn" id="homeAttachBtn" title="Attach file">
+                <button type="button" class="control-btn attach-btn" id="homeAttachBtn" title="Attach file" aria-label="Attach file">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                   </svg>
                 </button>
-                <button type="button" class="control-btn vault-picker-btn" id="homeVaultPickerBtn" title="Attach from Vault">
+                <button type="button" class="control-btn vault-picker-btn" id="homeVaultPickerBtn" title="Attach from Vault" aria-label="Attach from Vault">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="2" y="6" width="20" height="14" rx="2"/>
                     <path d="M2 10h20"/>
                     <path d="M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/>
                   </svg>
                 </button>
-                <button type="button" class="control-btn thinking-btn" id="homeThinkingBtn" title="Extended thinking ⇧⌘E">
+                <button type="button" class="control-btn thinking-btn" id="homeThinkingBtn" title="Extended thinking ⇧⌘E" aria-label="Extended thinking">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"></circle>
                     <polyline points="12 6 12 12 16 14"></polyline>
@@ -240,7 +260,7 @@
                     </div>
                   </div>
                 </div>
-                <button type="submit" class="send-btn" id="homeSendBtn" disabled>
+                <button type="submit" class="send-btn" id="homeSendBtn" disabled aria-label="Send message">
                   <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <line x1="12" y1="19" x2="12" y2="5"></line>
                     <polyline points="5 12 12 5 19 12"></polyline>
@@ -266,7 +286,7 @@
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </button>
-          <button class="new-chat-btn" onclick="startNewChat()" title="New chat">
+          <button class="new-chat-btn" onclick="startNewChat()" title="New chat" aria-label="Start a new chat">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -292,20 +312,20 @@
                 <div class="input-controls">
                   <div class="left-controls">
                     <input type="file" id="chatFileInput" class="file-input-hidden" multiple />
-                    <button type="button" class="control-btn attach-btn" id="chatAttachBtn" title="Attach file">
+                    <button type="button" class="control-btn attach-btn" id="chatAttachBtn" title="Attach file" aria-label="Attach file">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="12" y1="5" x2="12" y2="19"></line>
                         <line x1="5" y1="12" x2="19" y2="12"></line>
                       </svg>
                     </button>
-                    <button type="button" class="control-btn vault-picker-btn" id="chatVaultPickerBtn" title="Attach from Vault">
+                    <button type="button" class="control-btn vault-picker-btn" id="chatVaultPickerBtn" title="Attach from Vault" aria-label="Attach from Vault">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="2" y="6" width="20" height="14" rx="2"/>
                         <path d="M2 10h20"/>
                         <path d="M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/>
                       </svg>
                     </button>
-                    <button type="button" class="control-btn thinking-btn" id="chatThinkingBtn" title="Extended thinking ⇧⌘E">
+                    <button type="button" class="control-btn thinking-btn" id="chatThinkingBtn" title="Extended thinking ⇧⌘E" aria-label="Extended thinking">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"></circle>
                         <polyline points="12 6 12 12 16 14"></polyline>
@@ -371,7 +391,7 @@
                         </div>
                       </div>
                     </div>
-                    <button type="submit" class="send-btn" id="chatSendBtn" disabled>
+                  <button type="submit" class="send-btn" id="chatSendBtn" disabled aria-label="Send message">
                       <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <line x1="12" y1="19" x2="12" y2="5"></line>
                         <polyline points="5 12 12 5 19 12"></polyline>
@@ -396,7 +416,7 @@
             <button class="sidebar-tab active" data-tab="progress" id="tabProgress">Progress</button>
             <button class="sidebar-tab" data-tab="artifact" id="tabArtifact" disabled>Artifact</button>
           </div>
-          <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">
+          <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
@@ -463,15 +483,15 @@
           <!-- Document Editor -->
           <div class="doc-editor-wrap" id="docEditorWrap" style="display:none">
             <div class="doc-toolbar" id="docToolbar">
-              <button data-cmd="bold" title="Bold"><b>B</b></button>
-              <button data-cmd="italic" title="Italic"><i>I</i></button>
-              <button data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+              <button data-cmd="bold" title="Bold" aria-label="Bold"><b>B</b></button>
+              <button data-cmd="italic" title="Italic" aria-label="Italic"><i>I</i></button>
+              <button data-cmd="strikeThrough" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
               <span class="doc-toolbar-sep"></span>
-              <button data-cmd="formatBlock" data-val="H1" title="Heading 1">H1</button>
-              <button data-cmd="formatBlock" data-val="H2" title="Heading 2">H2</button>
+              <button data-cmd="formatBlock" data-val="H1" title="Heading 1" aria-label="Heading 1">H1</button>
+              <button data-cmd="formatBlock" data-val="H2" title="Heading 2" aria-label="Heading 2">H2</button>
               <span class="doc-toolbar-sep"></span>
-              <button data-cmd="insertUnorderedList" title="Bullet list">&bull;</button>
-              <button data-cmd="insertOrderedList" title="Numbered list">1.</button>
+              <button data-cmd="insertUnorderedList" title="Bullet list" aria-label="Bulleted list">&bull;</button>
+              <button data-cmd="insertOrderedList" title="Numbered list" aria-label="Numbered list">1.</button>
             </div>
             <div class="doc-editor" id="docEditor" contenteditable="true"></div>
           </div>
@@ -487,10 +507,10 @@
               <span>Download</span>
             </button>
             <div class="artifact-version-btns">
-              <button class="artifact-action-btn" id="artifactUndoBtn" title="Undo" disabled>
+              <button class="artifact-action-btn" id="artifactUndoBtn" title="Undo" aria-label="Undo" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
               </button>
-              <button class="artifact-action-btn" id="artifactRedoBtn" title="Redo" disabled>
+              <button class="artifact-action-btn" id="artifactRedoBtn" title="Redo" aria-label="Redo" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
               </button>
             </div>
@@ -511,7 +531,7 @@
       <!-- Settings View -->
       <div class="settings-view hidden" id="settingsView">
         <header class="settings-header">
-          <button type="button" class="settings-back-btn" id="settingsBackBtn" title="Back">
+          <button type="button" class="settings-back-btn" id="settingsBackBtn" title="Back" aria-label="Back">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"></polyline>
             </svg>
@@ -567,7 +587,7 @@
           </section>
           <section class="settings-section">
             <h2 class="settings-section-title">MCP servers</h2>
-            <p class="settings-section-desc">Add custom MCP servers (HTTP or local). They are merged with Composio and Smithery.</p>
+            <p class="settings-section-desc">Add custom MCP servers via HTTP or local launch settings. They are merged with Composio and Smithery.</p>
             <div class="settings-mcp-list" id="settingsMcpList"></div>
             <button type="button" class="settings-add-mcp-btn" id="settingsAddMcpBtn">Add MCP server</button>
             <div class="settings-mcp-form hidden" id="settingsMcpForm">
@@ -755,7 +775,7 @@
       <!-- Database Explorer View -->
       <div class="db-view hidden" id="dbView">
         <header class="db-header">
-          <button type="button" class="db-back-btn" id="dbBackBtn" title="Back">
+        <button type="button" class="db-back-btn" id="dbBackBtn" title="Back" aria-label="Back">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"></polyline>
             </svg>
@@ -862,7 +882,7 @@
       <!-- Reports View -->
       <div class="reports-view hidden" id="reportsView">
         <header class="reports-header">
-          <button type="button" class="reports-back-btn" id="reportsBackBtn" title="Back">
+          <button type="button" class="reports-back-btn" id="reportsBackBtn" title="Back" aria-label="Back">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"></polyline>
             </svg>
@@ -990,7 +1010,7 @@
       <!-- Jobs View -->
       <div class="jobs-view hidden" id="jobsView">
         <header class="jobs-header">
-          <button type="button" class="jobs-back-btn" id="jobsBackBtn" title="Back">
+        <button type="button" class="jobs-back-btn" id="jobsBackBtn" title="Back" aria-label="Back">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"></polyline>
             </svg>
@@ -1043,6 +1063,7 @@
                 <option value="report_generation">Report Generation</option>
                 <option value="webhook">Webhook</option>
                 <option value="data_export">Data Export</option>
+                <option value="chat_message">Chat Message</option>
               </select>
             </div>
             <!-- Report generation config -->
@@ -1070,7 +1091,7 @@
               <label for="jobExportSource">Export Source</label>
               <select id="jobExportSource" class="settings-select">
                 <option value="messages">Messages</option>
-                <option value="chats">Chats</option>
+                <option value="providers">Provider Usage</option>
               </select>
             </div>
             <div class="settings-field hidden" id="jobExportFormatField">
@@ -1079,6 +1100,19 @@
                 <option value="json">JSON</option>
                 <option value="csv">CSV</option>
               </select>
+            </div>
+            <!-- Chat message config -->
+            <div class="settings-field hidden" id="jobChatMessagePromptField">
+              <label for="jobChatMessagePrompt">Message Prompt</label>
+              <textarea id="jobChatMessagePrompt" class="settings-textarea" rows="3" placeholder="Ask the provider to run on schedule"></textarea>
+            </div>
+            <div class="settings-field hidden" id="jobChatMessageProviderField">
+              <label for="jobChatMessageProvider">Provider</label>
+              <input type="text" id="jobChatMessageProvider" class="settings-input" placeholder="claude" />
+            </div>
+            <div class="settings-field hidden" id="jobChatMessageMaxTurnsField">
+              <label for="jobChatMessageMaxTurns">Max Turns</label>
+              <input type="number" id="jobChatMessageMaxTurns" class="settings-input" min="1" max="100" placeholder="20" />
             </div>
             <div class="settings-mcp-form-actions">
               <button type="button" class="settings-mcp-cancel-btn" id="jobCancelBtn">Cancel</button>
@@ -1092,7 +1126,7 @@
       <!-- ==================== VAULT VIEW ==================== -->
       <div class="vault-view hidden" id="vaultView">
         <header class="vault-header">
-          <button type="button" class="vault-back-btn" id="vaultBackBtn" title="Back">
+          <button type="button" class="vault-back-btn" id="vaultBackBtn" title="Back" aria-label="Back">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="15 18 9 12 15 6"></polyline>
             </svg>
@@ -1120,7 +1154,7 @@
             <option value="file_size:desc">Largest</option>
             <option value="file_size:asc">Smallest</option>
           </select>
-          <button type="button" class="vault-view-toggle" id="vaultViewToggle" title="Toggle view">
+          <button type="button" class="vault-view-toggle" id="vaultViewToggle" title="Toggle view" aria-label="Toggle view">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="7" height="7"></rect>
               <rect x="14" y="3" width="7" height="7"></rect>
@@ -1181,7 +1215,7 @@
           <div class="tasks-modal">
             <div class="tasks-modal-header">
               <h3 id="taskModalTitle">New Task</h3>
-              <button class="tasks-modal-close" id="taskModalClose">&times;</button>
+      <button class="tasks-modal-close" id="taskModalClose" aria-label="Close task dialog">&times;</button>
             </div>
             <div class="tasks-modal-body">
               <input type="hidden" id="taskModalId">
@@ -1239,7 +1273,7 @@
     </div><!-- end main-content -->
 
     <!-- Right Sidebar Expand Button (visible when collapsed) -->
-    <button class="right-sidebar-expand-btn" id="rightSidebarExpand" title="Expand sidebar">
+    <button class="right-sidebar-expand-btn" id="rightSidebarExpand" title="Expand sidebar" aria-label="Expand sidebar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="15 18 9 12 15 6"></polyline>
       </svg>

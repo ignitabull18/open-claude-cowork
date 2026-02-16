@@ -2,12 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import net from 'node:net';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Plugins live at project_root/plugins/
 const PLUGINS_DIR = path.resolve(__dirname, '..', '..', 'plugins');
+const DEFAULT_GIT_INSTALL_ALLOWLIST = ['github.com', 'gitlab.com', 'bitbucket.org'];
+const ALLOWED_LOCAL_COMMANDS = new Set(['npx', 'node', 'python', 'python3', 'bun', 'deno', 'uvx']);
+const PLUGIN_DISCOVERY_CACHE_MS = Math.max(1_000, Number(process.env.PLUGIN_DISCOVERY_CACHE_MS || 30_000));
 
 /**
  * Manages plugin discovery, installation, and configuration.
@@ -26,6 +30,7 @@ export class PluginManager {
   constructor({ readSettings, writeSettings }) {
     this._readSettings = readSettings;
     this._writeSettings = writeSettings;
+    this._discoveryCache = { at: 0, plugins: [] };
     // Ensure plugins directory exists
     if (!fs.existsSync(PLUGINS_DIR)) {
       fs.mkdirSync(PLUGINS_DIR, { recursive: true });
@@ -34,26 +39,55 @@ export class PluginManager {
 
   // ── Discovery ───────────────────────────────────────
 
-  /**
-   * Scan the plugins/ directory for installed plugins.
-   * Returns an array of { name, manifest, enabled } objects.
-   */
-  discover() {
+  _invalidateDiscoveryCache() {
+    this._discoveryCache = { at: 0, plugins: [] };
+  }
+
+  _isDiscoveryCacheValid() {
+    return this._discoveryCache.at > 0 && (Date.now() - this._discoveryCache.at) < PLUGIN_DISCOVERY_CACHE_MS;
+  }
+
+  _refreshDiscoveryCache() {
     const results = [];
-    if (!fs.existsSync(PLUGINS_DIR)) return results;
+    if (!fs.existsSync(PLUGINS_DIR)) {
+      this._discoveryCache = { at: Date.now(), plugins: [] };
+      return;
+    }
 
     for (const entry of fs.readdirSync(PLUGINS_DIR, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const manifest = this._readManifest(entry.name);
       if (!manifest) continue;
+      const dirName = entry.name;
       results.push({
-        name: manifest.name || entry.name,
-        dirName: entry.name,
+        name: manifest.name || dirName,
+        dirName,
         manifest,
-        enabled: this._isEnabled(manifest.name || entry.name)
+        hasMcp: fs.existsSync(path.join(PLUGINS_DIR, dirName, '.mcp.json')),
+        hasSkills: fs.existsSync(path.join(PLUGINS_DIR, dirName, 'skills')),
+        hasCommands: fs.existsSync(path.join(PLUGINS_DIR, dirName, 'commands'))
       });
     }
-    return results;
+
+    this._discoveryCache = {
+      at: Date.now(),
+      plugins: results
+    };
+  }
+
+  /**
+   * Scan the plugins/ directory for installed plugins.
+   * Returns an array of { name, manifest, enabled } objects.
+   */
+  discover() {
+    if (!this._isDiscoveryCacheValid()) {
+      this._refreshDiscoveryCache();
+    }
+
+    return this._discoveryCache.plugins.map((plugin) => ({
+      ...plugin,
+      enabled: this._isEnabled(plugin.name)
+    }));
   }
 
   _normalizeDirName(rawDirName) {
@@ -87,6 +121,140 @@ export class PluginManager {
     return { safeDirName, target };
   }
 
+  _getPluginGitAllowlist() {
+    const raw = process.env.PLUGIN_GIT_INSTALL_ALLOWLIST;
+    if (!raw) {
+      return DEFAULT_GIT_INSTALL_ALLOWLIST;
+    }
+    return raw
+      .split(',')
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  _isAllowedHost(hostname, allowlist) {
+    if (!Array.isArray(allowlist) || allowlist.length === 0) return true;
+
+    return allowlist.some((entry) => {
+      if (entry.startsWith('*.')) {
+        return hostname.endsWith(entry.slice(1));
+      }
+      return hostname === entry;
+    });
+  }
+
+  _isBlockedHost(hostname) {
+    const normalized = String(hostname || '').toLowerCase();
+    if (!normalized) return true;
+    if (normalized === 'localhost' || normalized.endsWith('.localhost') || normalized.endsWith('.local')) {
+      return true;
+    }
+    if (net.isIP(normalized)) {
+      return true;
+    }
+    return false;
+  }
+
+  _validateGitUrl(rawUrl) {
+    const allowlist = this._getPluginGitAllowlist();
+    const parsed = new URL(rawUrl);
+    if (!['https:', 'http:'].includes(parsed.protocol)) {
+      throw new Error('Plugin git URL must use http or https');
+    }
+    if (parsed.username || parsed.password) {
+      throw new Error('Plugin git URL must not include credentials');
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    if (!host) {
+      throw new Error('Plugin git URL is missing host');
+    }
+    if (this._isBlockedHost(host) || !this._isAllowedHost(host, allowlist)) {
+      throw new Error('Plugin git host is not allowed');
+    }
+
+    return parsed.toString();
+  }
+
+  _getMcpHostAllowlist() {
+    const raw = process.env.PLUGIN_MCP_HOST_ALLOWLIST;
+    if (!raw) return [];
+    return raw.split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+  }
+
+  _isLocalMcpEnabled() {
+    return process.env.PLUGIN_ALLOW_LOCAL_MCP === 'true';
+  }
+
+  _normalizeMcpServerName(name, pluginName) {
+    const safePlugin = String(pluginName || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 32) || 'plugin';
+    const safeServer = String(name || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64);
+    if (!safeServer) return `plugin_${safePlugin}`.slice(0, 128);
+    return `plugin_${safePlugin}_${safeServer}`.slice(0, 128);
+  }
+
+  _coerceHeaders(headers) {
+    if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return {};
+    const result = {};
+    for (const [key, value] of Object.entries(headers)) {
+      if (!key || typeof key !== 'string') continue;
+      if (value === undefined || value === null) continue;
+      if (typeof value === 'object') continue;
+      result[key] = String(value);
+    }
+    return result;
+  }
+
+  _sanitizeMcpConfig(_pluginName, _serverName, config) {
+    if (!config || typeof config !== 'object') return null;
+
+    const hostAllowlist = this._getMcpHostAllowlist();
+    if (typeof config.command === 'string') {
+      if (!this._isLocalMcpEnabled()) return null;
+
+      const command = config.command.trim();
+      if (!ALLOWED_LOCAL_COMMANDS.has(command)) return null;
+
+      const args = Array.isArray(config.args)
+        ? config.args.filter((arg) => typeof arg === 'string')
+        : [];
+
+      const environment = this._coerceHeaders(config.environment);
+
+      return {
+        type: 'local',
+        command,
+        ...(args.length ? { args } : {}),
+        ...(Object.keys(environment).length ? { environment } : {})
+      };
+    }
+
+    if (typeof config.url === 'string') {
+      let parsed;
+      try {
+        parsed = new URL(config.url);
+      } catch {
+        return null;
+      }
+
+      if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+
+      const host = parsed.hostname.toLowerCase();
+      if (!this._isBlockedHost(host)) {
+        if (this._isAllowedHost(host, hostAllowlist)) {
+          return {
+            type: 'http',
+            url: parsed.toString(),
+            headers: this._coerceHeaders(config.headers)
+          };
+        }
+      }
+      return null;
+    }
+
+    return null;
+  }
+
   /**
    * List all plugins with their enabled/disabled status.
    */
@@ -101,29 +269,41 @@ export class PluginManager {
       category: p.manifest.category || 'general',
       enabled: p.enabled,
       agents: p.manifest.agents ? Object.keys(p.manifest.agents) : [],
-      hasMcp: fs.existsSync(path.join(PLUGINS_DIR, p.dirName, '.mcp.json')),
-      hasSkills: fs.existsSync(path.join(PLUGINS_DIR, p.dirName, 'skills')),
-      hasCommands: fs.existsSync(path.join(PLUGINS_DIR, p.dirName, 'commands'))
+      hasMcp: p.hasMcp,
+      hasSkills: p.hasSkills,
+      hasCommands: p.hasCommands
     }));
   }
 
   // ── Enable / Disable ────────────────────────────────
 
   enablePlugin(name) {
+    const plugin = this._findInstalledPlugin(name);
+    if (!plugin) {
+      throw new Error(`Plugin "${name}" not found`);
+    }
+
     const settings = this._readSettings();
     if (!settings.plugins) settings.plugins = { enabled: [], installed: [] };
-    if (!settings.plugins.enabled.includes(name)) {
-      settings.plugins.enabled.push(name);
+    if (!settings.plugins.enabled.includes(plugin.name)) {
+      settings.plugins.enabled.push(plugin.name);
     }
     this._writeSettings(settings);
+    this._invalidateDiscoveryCache();
     return true;
   }
 
   disablePlugin(name) {
+    const plugin = this._findInstalledPlugin(name);
+    if (!plugin) {
+      throw new Error(`Plugin "${name}" not found`);
+    }
+
     const settings = this._readSettings();
     if (!settings.plugins) return true;
-    settings.plugins.enabled = (settings.plugins.enabled || []).filter(n => n !== name);
+    settings.plugins.enabled = (settings.plugins.enabled || []).filter(n => n !== plugin.name);
     this._writeSettings(settings);
+    this._invalidateDiscoveryCache();
     return true;
   }
 
@@ -140,7 +320,10 @@ export class PluginManager {
       throw new Error('Invalid git URL');
     }
 
-    const rawName = dirName || gitUrl.split('/').pop();
+    const normalizedUrl = this._validateGitUrl(gitUrl);
+    const parsedUrl = new URL(normalizedUrl);
+    const suggestedName = (parsedUrl.pathname || '').split('/').filter(Boolean).pop();
+    const rawName = dirName || suggestedName || 'plugin';
     const { safeDirName, target } = this._resolvePluginPath(rawName);
 
     if (fs.existsSync(target)) {
@@ -148,7 +331,7 @@ export class PluginManager {
     }
 
     try {
-      execFileSync('git', ['clone', '--depth', '1', gitUrl, target], { stdio: 'pipe', timeout: 60000 });
+      execFileSync('git', ['clone', '--depth', '1', normalizedUrl, target], { stdio: 'pipe', timeout: 60000 });
     } catch (err) {
       throw new Error(`Failed to clone plugin: ${err.message}`);
     }
@@ -160,47 +343,62 @@ export class PluginManager {
       throw new Error('Cloned repository is not a valid plugin (missing .claude-plugin/plugin.json)');
     }
 
+    const pluginName = manifest.name || safeDirName;
+
+    // Optionally verify mcp config structure to catch malformed plugin installs
+    const pluginServers = this._readPluginMcpConfigs(safeDirName);
+    if (Object.keys(pluginServers).length === 0) {
+      console.info(`[Plugins] Plugin ${pluginName} installed without MCP config`);
+    }
+
     // Track installation
     const settings = this._readSettings();
     if (!settings.plugins) settings.plugins = { enabled: [], installed: [] };
     if (!settings.plugins.installed) settings.plugins.installed = [];
+    settings.plugins.installed = settings.plugins.installed.filter(p => p.name !== pluginName);
     settings.plugins.installed.push({
-      name: manifest.name || safeDirName,
-      source: gitUrl,
+      name: pluginName,
+      source: normalizedUrl,
       installedAt: new Date().toISOString()
     });
     // Auto-enable
     if (!settings.plugins.enabled) settings.plugins.enabled = [];
-    if (!settings.plugins.enabled.includes(manifest.name || safeDirName)) {
-      settings.plugins.enabled.push(manifest.name || safeDirName);
+    if (!settings.plugins.enabled.includes(pluginName)) {
+      settings.plugins.enabled.push(pluginName);
     }
     this._writeSettings(settings);
+    this._invalidateDiscoveryCache();
 
-    return { name: manifest.name || safeDirName, manifest };
+    return { name: pluginName, manifest };
   }
 
   /**
    * Remove an installed plugin by directory name.
    */
   removePlugin(dirName) {
-    const { safeDirName, target } = this._resolvePluginPath(dirName);
-    const dest = target;
+    let plugin = this._findInstalledPlugin(dirName);
+    if (!plugin) {
+      const { safeDirName, target } = this._resolvePluginPath(dirName);
+      if (!fs.existsSync(target)) {
+        throw new Error(`Plugin "${dirName}" not found`);
+      }
+      plugin = { dirName: safeDirName, name: safeDirName };
+    }
+
+    const dest = path.join(PLUGINS_DIR, plugin.dirName);
     if (!fs.existsSync(dest)) {
       throw new Error(`Plugin "${dirName}" not found`);
     }
-
-    // Read manifest to get the logical name before deleting
-    const manifest = this._readManifest(safeDirName);
-    const name = manifest?.name || safeDirName;
 
     fs.rmSync(dest, { recursive: true, force: true });
 
     // Clean up settings
     const settings = this._readSettings();
     if (settings.plugins) {
-      settings.plugins.enabled = (settings.plugins.enabled || []).filter(n => n !== name);
-      settings.plugins.installed = (settings.plugins.installed || []).filter(p => p.name !== name);
+      settings.plugins.enabled = (settings.plugins.enabled || []).filter(n => n !== plugin.name);
+      settings.plugins.installed = (settings.plugins.installed || []).filter(p => p.name !== plugin.name);
       this._writeSettings(settings);
+      this._invalidateDiscoveryCache();
     }
 
     return true;
@@ -216,18 +414,12 @@ export class PluginManager {
     const mcpServers = {};
     for (const plugin of this.discover()) {
       if (!plugin.enabled) continue;
-      const mcpPath = path.join(PLUGINS_DIR, plugin.dirName, '.mcp.json');
-      if (!fs.existsSync(mcpPath)) continue;
+      const pluginName = plugin.manifest?.name || plugin.dirName;
+      const pluginServers = this._readPluginMcpConfigs(plugin.dirName);
 
-      try {
-        const mcpConfig = JSON.parse(fs.readFileSync(mcpPath, 'utf8'));
-        const servers = mcpConfig.mcpServers || mcpConfig;
-        for (const [serverName, config] of Object.entries(servers)) {
-          const key = `plugin_${plugin.dirName}_${serverName}`;
-          mcpServers[key] = config;
-        }
-      } catch (err) {
-        console.error(`[Plugins] Failed to read MCP config for ${plugin.name}:`, err.message);
+      for (const [rawServerName, sanitizedConfig] of Object.entries(pluginServers)) {
+        const key = this._normalizeMcpServerName(rawServerName, pluginName);
+        mcpServers[key] = sanitizedConfig;
       }
     }
     return mcpServers;
@@ -278,6 +470,11 @@ export class PluginManager {
 
   // ── Internal Helpers ────────────────────────────────
 
+  _findInstalledPlugin(name) {
+    const plugins = this.discover();
+    return plugins.find((plugin) => plugin.name === name || plugin.dirName === name);
+  }
+
   _readManifest(dirName) {
     const manifestPath = path.join(PLUGINS_DIR, dirName, '.claude-plugin', 'plugin.json');
     if (!fs.existsSync(manifestPath)) return null;
@@ -291,5 +488,43 @@ export class PluginManager {
   _isEnabled(name) {
     const settings = this._readSettings();
     return (settings.plugins?.enabled || []).includes(name);
+  }
+
+  _readPluginMcpConfigs(dirName) {
+    const mcpPath = path.join(PLUGINS_DIR, dirName, '.mcp.json');
+    if (!fs.existsSync(mcpPath)) return {};
+
+    let payload;
+    try {
+      payload = JSON.parse(fs.readFileSync(mcpPath, 'utf8'));
+    } catch (err) {
+      console.error(`[Plugins] Failed to read MCP config for ${dirName}:`, err.message);
+      return {};
+    }
+
+    const servers = payload.mcpServers || payload;
+    if (!servers || typeof servers !== 'object' || Array.isArray(servers)) {
+      console.error(`[Plugins] Invalid MCP config shape for ${dirName}`);
+      return {};
+    }
+
+    const sanitized = {};
+    for (const [serverName, serverConfig] of Object.entries(servers)) {
+      if (!serverName || typeof serverName !== 'string') continue;
+      if (!serverConfig || typeof serverConfig !== 'object') {
+        console.warn(`[Plugins] Skipping unsafe MCP server "${serverName}" from plugin ${dirName}`);
+        continue;
+      }
+
+      const safeConfig = this._sanitizeMcpConfig(dirName, serverName, serverConfig);
+      if (!safeConfig) {
+        console.warn(`[Plugins] Skipping unsafe MCP server "${serverName}" from plugin ${dirName}`);
+        continue;
+      }
+
+      sanitized[serverName] = safeConfig;
+    }
+
+    return sanitized;
   }
 }

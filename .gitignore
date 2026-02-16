@@ -147,3 +147,11 @@ server/opencode.json
 
 # User settings (API keys, MCP servers) - do not commit
 server/user-settings.json
+
+# Local agent/runtime configuration and diagnostics (tooling-local only)
+.claude/mcp.json
+.claude/settings.local.json
+.playwright-mcp/
+playwright-report/
+test-results/
+output/

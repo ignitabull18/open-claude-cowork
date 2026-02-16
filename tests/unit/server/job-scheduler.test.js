@@ -4,14 +4,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockGetActiveJobs = vi.fn();
 const mockGetDueJobs = vi.fn();
+const mockClaimDueJob = vi.fn();
 const mockGetJob = vi.fn();
 const mockUpdateJob = vi.fn();
 const mockAddJobExecution = vi.fn();
 const mockUpdateJobExecution = vi.fn();
+const mockRecoverStaleRunningJobs = vi.fn();
 
 vi.mock('../../../server/supabase/job-store.js', () => ({
   getActiveJobs: mockGetActiveJobs,
   getDueJobs: mockGetDueJobs,
+  claimDueJob: mockClaimDueJob,
+  recoverStaleRunningJobs: mockRecoverStaleRunningJobs,
   getJob: mockGetJob,
   updateJob: mockUpdateJob,
   addJobExecution: mockAddJobExecution,
@@ -28,6 +32,14 @@ const mockUpdateReportResult = vi.fn();
 const mockGetDailyMessages = vi.fn();
 const mockGetProviderUsage = vi.fn();
 
+const mockProviderQuery = vi.fn(async function* () {
+  // default: no output chunks
+});
+
+mockProviderQuery.mockName('provider.query');
+
+const mockGetProvider = vi.fn(() => ({ query: mockProviderQuery }));
+
 vi.mock('../../../server/supabase/report-store.js', () => ({
   getSavedReport: mockGetSavedReport,
   executeCustomQuery: mockExecuteCustomQuery,
@@ -42,8 +54,12 @@ vi.mock('../../../server/supabase/report-store.js', () => ({
   deleteSavedReport: vi.fn(),
 }));
 
+vi.mock('../../../server/providers/index.js', () => ({
+  getProvider: mockGetProvider
+}));
+
 // Import module under test AFTER mocks are set up
-const { startScheduler, stopScheduler, triggerJob } = await import(
+const { startScheduler, stopScheduler, triggerJob, getNextCronRun } = await import(
   '../../../server/job-scheduler.js'
 );
 
@@ -51,6 +67,10 @@ describe('job-scheduler', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    mockProviderQuery.mockImplementation(async function* () {
+      // default: no output chunks
+    });
+    mockGetProvider.mockReturnValue({ query: mockProviderQuery });
     // Silence console.log / console.error in tests
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -61,6 +81,80 @@ describe('job-scheduler', () => {
     stopScheduler();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  describe('getNextCronRun', () => {
+    it('supports "?" as a wildcard in day and weekday fields', () => {
+      vi.setSystemTime(new Date(2026, 0, 15, 10, 5, 0, 0));
+
+      const next = getNextCronRun('30 11 ? * ?');
+
+      expect(next).toBeInstanceOf(Date);
+      expect(next.getMonth()).toBe(0);
+      expect(next.getDate()).toBe(15);
+      expect(next.getHours()).toBe(11);
+      expect(next.getMinutes()).toBe(30);
+    });
+
+    it('supports "L" for last day-of-month', () => {
+      vi.setSystemTime(new Date(2026, 0, 20, 8, 0, 0, 0));
+
+      const next = getNextCronRun('0 9 L * *');
+
+      expect(next).toBeInstanceOf(Date);
+      expect(next.getMonth()).toBe(0); // January
+      expect(next.getDate()).toBe(31);
+      expect(next.getHours()).toBe(9);
+      expect(next.getMinutes()).toBe(0);
+    });
+
+    it('supports "L-n" for offsets from the last day', () => {
+      vi.setSystemTime(new Date(2026, 0, 20, 8, 0, 0, 0));
+
+      const next = getNextCronRun('0 9 L-3 * *');
+
+      expect(next).toBeInstanceOf(Date);
+      expect(next.getMonth()).toBe(0);
+      expect(next.getDate()).toBe(28);
+    });
+
+    it('supports "W" nearest weekday for day-of-month expressions', () => {
+      vi.setSystemTime(new Date(2026, 0, 10, 8, 0, 0, 0));
+
+      const next = getNextCronRun('0 9 1W * *');
+
+      expect(next).toBeInstanceOf(Date);
+      expect(next.getFullYear()).toBe(2026);
+      expect(next.getMonth()).toBe(1); // February
+      expect(next.getDate()).toBe(2);
+    });
+
+    it('supports "#" for nth weekday-of-month in day-of-week field', () => {
+      vi.setSystemTime(new Date(2026, 0, 1, 0, 0, 0, 0));
+
+      const next = getNextCronRun('0 9 * * fri#3');
+
+      expect(next).toBeInstanceOf(Date);
+      expect(next.getDate()).toBe(16);
+      expect(next.getDay()).toBe(5);
+    });
+
+    it('supports "nL" for last weekday in month', () => {
+      vi.setSystemTime(new Date(2026, 0, 1, 0, 0, 0, 0));
+
+      const next = getNextCronRun('0 9 * * friL');
+
+      expect(next).toBeInstanceOf(Date);
+      expect(next.getMonth()).toBe(0);
+      expect(next.getDate()).toBe(30);
+      expect(next.getDay()).toBe(5);
+    });
+
+    it('returns null for invalid cron expressions', () => {
+      expect(getNextCronRun('not a cron')).toBeNull();
+      expect(getNextCronRun('*/5 * * * * *')).toBeNull();
+      expect(getNextCronRun('0 0 32 * *')).toBeNull();
+    });
   });
 
   // ======================================================================
@@ -128,6 +222,7 @@ describe('job-scheduler', () => {
       mockGetDueJobs.mockResolvedValue([]);
 
       await startScheduler();
+      await vi.advanceTimersByTimeAsync(0);
 
       // getDueJobs is called by the initial pollAndExecute
       expect(mockGetDueJobs).toHaveBeenCalledOnce();
@@ -138,6 +233,7 @@ describe('job-scheduler', () => {
       mockGetDueJobs.mockResolvedValue([]);
 
       await startScheduler();
+      await vi.advanceTimersByTimeAsync(0);
 
       // Clear the initial call count
       mockGetDueJobs.mockClear();
@@ -166,8 +262,9 @@ describe('job-scheduler', () => {
       expect(mockUpdateJob).toHaveBeenCalledWith(
         'job-ot',
         'u1',
-        { nextRunAt: '2099-06-15T10:00:00.000Z' }
+        expect.objectContaining({ nextRunAt: '2099-06-15T10:00:00.000Z' })
       );
+      expect(mockUpdateJob.mock.calls[0][2]).toEqual(expect.objectContaining({ status: 'active' }));
     });
 
     it('calculates nextRunAt for cron job with valid expression', async () => {
@@ -189,8 +286,9 @@ describe('job-scheduler', () => {
       expect(mockUpdateJob).toHaveBeenCalledWith(
         'job-cr',
         'u1',
-        { nextRunAt: expect.any(String) }
+        expect.objectContaining({ nextRunAt: expect.any(String) })
       );
+      expect(mockUpdateJob.mock.calls[0][2]).toEqual(expect.objectContaining({ status: 'active' }));
       const nextRunAt = new Date(mockUpdateJob.mock.calls[0][2].nextRunAt);
       expect(nextRunAt.getTime()).toBeGreaterThan(Date.now());
       expect(nextRunAt.getMinutes()).toBe(30);
@@ -224,6 +322,7 @@ describe('job-scheduler', () => {
       mockGetDueJobs.mockResolvedValue([]);
 
       await startScheduler();
+      await vi.advanceTimersByTimeAsync(0);
       stopScheduler();
 
       mockGetDueJobs.mockClear();
@@ -383,15 +482,16 @@ describe('job-scheduler', () => {
       await triggerJob('job-wh', 'u1');
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://example.com/hook',
-        expect.objectContaining({
+        expect.any(URL),
+        {
           method: 'POST',
-          headers: expect.objectContaining({
+          headers: {
             'Content-Type': 'application/json',
-          }),
+          },
           body: JSON.stringify({ event: 'test' }),
-        })
+        }
       );
+      expect(mockFetch.mock.calls[0][0].toString()).toBe('https://example.com/hook');
 
       expect(mockUpdateJobExecution).toHaveBeenCalledWith(
         'exec-wh',
@@ -518,7 +618,48 @@ describe('job-scheduler', () => {
         'exec-de',
         expect.objectContaining({
           status: 'success',
-          result: { format: 'csv', rowCount: 1, source: 'messages' },
+          result: {
+            format: 'csv',
+            rowCount: 1,
+            source: 'messages',
+            data: 'day,count\n2025-01-01,5',
+            contentType: 'text/csv',
+          },
+        })
+      );
+    });
+
+    it('executes a data_export action with legacy chats source as messages', async () => {
+      const job = {
+        id: 'job-de3',
+        user_id: 'u1',
+        name: 'Export chats',
+        action_type: 'data_export',
+        action_config: { source: 'chats', format: 'json' },
+        job_type: 'one_time',
+        run_count: 0,
+      };
+
+      mockGetJob.mockResolvedValue(job);
+      mockAddJobExecution.mockResolvedValue({ id: 'exec-de3' });
+      mockGetDailyMessages.mockResolvedValue([{ day: '2025-01-01', count: 5 }]);
+      mockUpdateJobExecution.mockResolvedValue({});
+      mockUpdateJob.mockResolvedValue({});
+
+      await triggerJob('job-de3', 'u1');
+
+      expect(mockGetDailyMessages).toHaveBeenCalledWith('u1', 365);
+      expect(mockUpdateJobExecution).toHaveBeenCalledWith(
+        'exec-de3',
+        expect.objectContaining({
+          status: 'success',
+          result: {
+            format: 'json',
+            rowCount: 1,
+            source: 'messages',
+            data: '[{"day":"2025-01-01","count":5}]',
+            contentType: 'application/json',
+          },
         })
       );
     });
@@ -545,7 +686,62 @@ describe('job-scheduler', () => {
       expect(mockGetProviderUsage).toHaveBeenCalledWith('u1', 365);
     });
 
-    it('executes a chat_message action with placeholder result', async () => {
+    it('fails a data_export action with unsupported source', async () => {
+      const job = {
+        id: 'job-de-fail',
+        user_id: 'u1',
+        name: 'Export unsupported',
+        action_type: 'data_export',
+        action_config: { source: 'unknown_source', format: 'json' },
+        job_type: 'one_time',
+        run_count: 0,
+      };
+
+      mockGetJob.mockResolvedValue(job);
+      mockAddJobExecution.mockResolvedValue({ id: 'exec-de-fail' });
+      mockUpdateJobExecution.mockResolvedValue({});
+      mockUpdateJob.mockResolvedValue({});
+
+      await triggerJob('job-de-fail', 'u1');
+
+      expect(mockUpdateJobExecution).toHaveBeenCalledWith(
+        'exec-de-fail',
+        expect.objectContaining({
+          status: 'failed',
+          error: 'Unsupported data_export source: unknown_source',
+        })
+      );
+    });
+
+    it('fails a data_export action with unsupported format', async () => {
+      const job = {
+        id: 'job-de-format',
+        user_id: 'u1',
+        name: 'Export bad format',
+        action_type: 'data_export',
+        action_config: { source: 'messages', format: 'xml' },
+        job_type: 'one_time',
+        run_count: 0,
+      };
+
+      mockGetJob.mockResolvedValue(job);
+      mockAddJobExecution.mockResolvedValue({ id: 'exec-de-format' });
+      mockGetDailyMessages.mockResolvedValue([{ day: '2025-01-01', count: 5 }]);
+      mockUpdateJobExecution.mockResolvedValue({});
+      mockUpdateJob.mockResolvedValue({});
+
+      await triggerJob('job-de-format', 'u1');
+
+      expect(mockUpdateJobExecution).toHaveBeenCalledWith(
+        'exec-de-format',
+        expect.objectContaining({
+          status: 'failed',
+          error: 'Unsupported data_export format: xml',
+        })
+      );
+    });
+
+    it('executes a chat_message action with provider output', async () => {
       const job = {
         id: 'job-cm',
         user_id: 'u1',
@@ -560,6 +756,11 @@ describe('job-scheduler', () => {
       mockAddJobExecution.mockResolvedValue({ id: 'exec-cm' });
       mockUpdateJobExecution.mockResolvedValue({});
       mockUpdateJob.mockResolvedValue({});
+      mockProviderQuery.mockImplementation(async function* () {
+        yield { type: 'text', content: 'Hi ' };
+        yield { type: 'text', content: 'there' };
+      });
+      mockGetProvider.mockReturnValue({ query: mockProviderQuery });
 
       await triggerJob('job-cm', 'u1');
 
@@ -568,10 +769,13 @@ describe('job-scheduler', () => {
         expect.objectContaining({
           status: 'success',
           result: expect.objectContaining({
-            message: expect.stringContaining('Chat message jobs'),
+            provider: 'claude',
+            response: 'Hi there',
+            responseLength: 8,
           }),
         })
       );
+      expect(mockGetProvider).toHaveBeenCalledWith('claude');
     });
 
     it('marks one_time job as completed after execution', async () => {
@@ -580,7 +784,7 @@ describe('job-scheduler', () => {
         user_id: 'u1',
         name: 'Once',
         action_type: 'chat_message',
-        action_config: {},
+        action_config: { prompt: 'Hello once' },
         job_type: 'one_time',
         run_count: 0,
       };
@@ -610,7 +814,7 @@ describe('job-scheduler', () => {
         user_id: 'u1',
         name: 'Recurring',
         action_type: 'chat_message',
-        action_config: {},
+        action_config: { prompt: 'Hello recurring' },
         job_type: 'recurring',
         interval_seconds: 600,
         run_count: 3,
@@ -662,6 +866,34 @@ describe('job-scheduler', () => {
         })
       );
     });
+
+    it('keeps one_time failed jobs completed without next run', async () => {
+      const job = {
+        id: 'job-fail-once',
+        user_id: 'u1',
+        name: 'Fail one-time',
+        action_type: 'foobar',
+        action_config: {},
+        job_type: 'one_time',
+        run_count: 5,
+      };
+
+      mockGetJob.mockResolvedValue(job);
+      mockAddJobExecution.mockResolvedValue({ id: 'exec-fail-once' });
+      mockUpdateJobExecution.mockResolvedValue({});
+      mockUpdateJob.mockResolvedValue({});
+
+      await triggerJob('job-fail-once', 'u1');
+
+      expect(mockUpdateJob).toHaveBeenCalledWith(
+        'job-fail-once',
+        'u1',
+        expect.objectContaining({
+          status: 'completed',
+          nextRunAt: null,
+        })
+      );
+    });
   });
 
   // ======================================================================
@@ -677,10 +909,12 @@ describe('job-scheduler', () => {
         action_config: {},
         job_type: 'one_time',
         run_count: 0,
+        next_run_at: new Date().toISOString()
       };
 
       mockGetActiveJobs.mockResolvedValue([]);
       mockGetDueJobs.mockResolvedValueOnce([dueJob]);
+      mockClaimDueJob.mockResolvedValue(dueJob);
       mockAddJobExecution.mockResolvedValue({ id: 'exec-due' });
       mockUpdateJobExecution.mockResolvedValue({});
       mockUpdateJob.mockResolvedValue({});

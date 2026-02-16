@@ -8,21 +8,21 @@
     "dev": "node server.js"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.7",
-    "@composio/core": "latest",
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "@opencode-ai/sdk": "latest",
-    "@supabase/supabase-js": "^2.95.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "exceljs": "^4.4.0",
-    "express": "^5.2.1",
-    "multer": "^2.0.2",
-    "pdfkit": "^0.17.2",
-    "pptxgenjs": "^4.0.1",
-    "zod": "^3.24.0"
+    "@anthropic-ai/claude-agent-sdk": "0.2.7",
+    "@composio/core": "0.5.1",
+    "@modelcontextprotocol/sdk": "1.12.1",
+    "@opencode-ai/sdk": "1.2.2",
+    "@supabase/supabase-js": "2.95.3",
+    "cors": "2.8.5",
+    "dotenv": "16.4.5",
+    "exceljs": "4.4.0",
+    "express": "5.2.1",
+    "multer": "2.0.2",
+    "pdfkit": "0.17.2",
+    "pptxgenjs": "4.0.1",
+    "zod": "3.24.0"
   },
   "optionalDependencies": {
-    "playwright": "^1.52.0"
+    "playwright": "1.52.0"
   }
 }

@@ -23,9 +23,13 @@ ENV SUPABASE_SERVICE_ROLE_KEY=""
 # OpenAI (optional — enables vector search embeddings)
 ENV OPENAI_API_KEY=""
 
-# Allow anonymous access during migration (set to false when done)
-ENV ALLOW_ANONYMOUS="true"
+# Production-safe default: disable anonymous access by default.
+# Set ALLOW_ANONYMOUS=true only if you explicitly require anonymous mode.
+ENV ALLOW_ANONYMOUS="false"
 
 EXPOSE 3001
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "const http = require('http'); const req = http.get('http://127.0.0.1:3001/api/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1));"
 
 CMD ["node", "server.js"]

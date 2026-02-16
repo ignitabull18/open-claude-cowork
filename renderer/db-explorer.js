@@ -32,7 +32,12 @@
       if (loaded) return;
       loaded = true;
       setupListeners();
-      await Promise.all([loadStats(), loadTables()]);
+      try {
+        await Promise.all([loadStats(), loadTables()]);
+      } catch (err) {
+        console.error('[DB-EXPLORER] Load error:', err);
+        loaded = false;
+      }
     }
   };
 
@@ -75,7 +80,13 @@
       renderTableList();
     } catch (err) {
       list.textContent = '';
-      appendError(list, 'Failed to load tables: ' + err.message);
+      appendError(
+        list,
+        'Failed to load tables: ' + err.message,
+        function () {
+          loadTables();
+        }
+      );
     }
   }
 
@@ -116,15 +127,14 @@
       renderSchema(currentColumns);
       renderIndexes(currentIndexes);
     } catch (err) {
-      var tbody = $('dbDataTbody');
-      tbody.textContent = '';
-      var tr = document.createElement('tr');
-      var td = document.createElement('td');
-      td.setAttribute('colspan', '99');
-      td.className = 'db-error';
-      td.textContent = 'Error: ' + err.message;
-      tr.appendChild(td);
-      tbody.appendChild(tr);
+      appendDataError(
+        $('dbDataTbody'),
+        99,
+        'Error loading data: ' + err.message,
+        function () {
+          selectTable(selectedTable);
+        }
+      );
     }
   }
 
@@ -146,15 +156,14 @@
       renderDataTable(result.rows || [], currentColumns);
       renderPagination();
     } catch (err) {
-      var tbody = $('dbDataTbody');
-      tbody.textContent = '';
-      var tr = document.createElement('tr');
-      var td = document.createElement('td');
-      td.setAttribute('colspan', '99');
-      td.className = 'db-error';
-      td.textContent = 'Error: ' + err.message;
-      tr.appendChild(td);
-      tbody.appendChild(tr);
+      appendDataError(
+        $('dbDataTbody'),
+        Math.max(currentColumns.length, 1),
+        'Error loading rows: ' + err.message,
+        function () {
+          loadRows();
+        }
+      );
     }
   }
 
@@ -445,10 +454,53 @@
     parent.appendChild(div);
   }
 
-  function appendError(parent, message) {
+  function appendError(parent, message, retryAction) {
     var div = document.createElement('div');
     div.className = 'db-error';
-    div.textContent = message;
+
+    var messageText = document.createElement('div');
+    messageText.className = 'db-error-message';
+    messageText.textContent = message;
+    div.appendChild(messageText);
+
+    if (typeof retryAction === 'function') {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'db-error-retry';
+      button.textContent = 'Retry';
+      button.addEventListener('click', function () {
+        retryAction();
+      });
+      div.appendChild(button);
+    }
+
     parent.appendChild(div);
+  }
+
+  function appendDataError(parent, colspan, message, retryAction) {
+    parent.textContent = '';
+    var tr = document.createElement('tr');
+    var td = document.createElement('td');
+    td.setAttribute('colspan', String(colspan || 1));
+    td.className = 'db-error-cell';
+
+    var messageText = document.createElement('div');
+    messageText.className = 'db-error-message';
+    messageText.textContent = message;
+    td.appendChild(messageText);
+
+    if (typeof retryAction === 'function') {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'db-error-retry';
+      button.textContent = 'Retry';
+      button.addEventListener('click', function () {
+        retryAction();
+      });
+      td.appendChild(button);
+    }
+
+    tr.appendChild(td);
+    parent.appendChild(tr);
   }
 })();

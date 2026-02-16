@@ -47,7 +47,7 @@ describe('Job endpoints', () => {
     execute_at: null,
     interval_seconds: null,
     cron_expression: '0 9 * * *',
-    action_type: 'report',
+    action_type: 'report_generation',
     action_config: { reportId: 'rpt-001' },
     next_run_at: '2025-01-02T09:00:00Z',
     last_run_at: null,
@@ -177,7 +177,7 @@ describe('Job endpoints', () => {
       expect(res.body.name).toBe('Hourly Check');
       expect(res.body.user_id).toBe(TEST_USER.id);
       expect(res.body.status).toBe('active');
-      expect(res.body.job_type).toBe('interval');
+      expect(res.body.job_type).toBe('recurring');
       expect(res.body.interval_seconds).toBe(3600);
     });
 
@@ -189,7 +189,7 @@ describe('Job endpoints', () => {
         name: 'One-time task',
         jobType: 'once',
         executeAt,
-        actionType: 'report',
+        actionType: 'report_generation',
         actionConfig: { reportId: 'rpt-002' }
       };
 
@@ -199,7 +199,7 @@ describe('Job endpoints', () => {
         .send(payload);
 
       expect(res.status).toBe(200);
-      expect(res.body.job_type).toBe('once');
+      expect(res.body.job_type).toBe('one_time');
       expect(res.body.execute_at).toBe(executeAt);
     });
 
@@ -210,7 +210,7 @@ describe('Job endpoints', () => {
         name: 'Cron Job',
         jobType: 'cron',
         cronExpression: '30 8 * * 1',
-        actionType: 'report',
+        actionType: 'report_generation',
         actionConfig: {}
       };
 

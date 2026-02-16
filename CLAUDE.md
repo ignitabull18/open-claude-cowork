@@ -53,7 +53,7 @@ docker run -p 3001:3001 \
   open-claude-cowork
 ```
 
-There are no tests configured (`npm test` is a no-op placeholder).
+Tests are configured and run via `npm test` (Vitest unit/integration suite).
 
 ## Architecture
 
@@ -98,7 +98,7 @@ The backend integrates with Supabase for persistence, auth, file storage, and ve
 
 **Auth flow:** Frontend uses Supabase Auth via CDN (`renderer/auth.js`). Token is stored in the preload/web-api layer and injected as `Authorization: Bearer <token>` on all API calls.
 
-**Graceful degradation:** When Supabase env vars are not set, the app works without auth/persistence (localStorage fallback). When `ALLOW_ANONYMOUS=true`, unauthenticated requests proceed with `userId = 'anonymous'`.
+**Graceful degradation:** When Supabase env vars are not set, the app works without auth/persistence (localStorage fallback). When `ALLOW_ANONYMOUS=true`, unauthenticated requests are assigned `userId = 'anonymous:<session-key>'` (IP/UA-derived unless `x-anon-session-id` is provided).
 
 ### Composio Integration
 
@@ -122,7 +122,7 @@ Separate Node.js app (ESM) with its own `package.json` and dependency tree. Entr
 
 - Backend uses ESM (`import`/`export`); root Electron files use CommonJS (`require`)
 - No TypeScript, no build step, no bundler — all plain JavaScript
-- No test framework configured
+- `npm test` runs Vitest (`vitest run`) for backend and integration suites
 - Frontend state is persisted to Supabase (when configured) with `localStorage` fallback. Provider/model selection always uses localStorage.
 - `renderer/auth.js` handles Supabase Auth (CDN-loaded, no bundler). Token refresh is automatic.
 - Streaming uses Server-Sent Events with heartbeat comments every 15s

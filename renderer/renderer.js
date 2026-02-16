@@ -87,8 +87,8 @@ const settingsAddFolderInstructionBtn = document.getElementById('settingsAddFold
 const settingsFolderInstructionForm = document.getElementById('settingsFolderInstructionForm');
 const settingsFolderPath = document.getElementById('settingsFolderPath');
 const settingsFolderInstructionsText = document.getElementById('settingsFolderInstructionsText');
-const settingsFolderSaveBtn = document.getElementById('settingsFolderSaveBtn');
-const settingsFolderCancelBtn = document.getElementById('settingsFolderCancelBtn');
+const settingsFolderSaveBtn = document.getElementById('settingsFolderInstructionSaveBtn');
+const settingsFolderCancelBtn = document.getElementById('settingsFolderInstructionCancelBtn');
 const settingsSaveInstructionsBtn = document.getElementById('settingsSaveInstructionsBtn');
 const settingsInstructionsStatus = document.getElementById('settingsInstructionsStatus');
 
@@ -206,6 +206,7 @@ let lastViewBeforeSettings = 'home';
 // Cached settings for MCP list (from GET /api/settings)
 let cachedSettings = { apiKeys: {}, mcpServers: [] };
 let settingsMcpEditingId = null; // id when editing an MCP entry, null when adding
+let appErrorTimer = null;
 
 // Model configurations per provider
 const providerModels = {
@@ -369,6 +370,7 @@ function setupAuthListeners() {
       leftSidebar.classList.remove('hidden');
       loadAllChats();
       renderChatHistory();
+      showView('home');
       homeInput.focus();
     });
   }
@@ -397,6 +399,26 @@ function showAuthInfo(msg) {
 function hideAuthMessages() {
   if (authError) authError.classList.add('hidden');
   if (authInfo) authInfo.classList.add('hidden');
+}
+
+function showAppError(message, timeoutMs = 5000) {
+  const msg = message ? String(message) : 'An unexpected error occurred.';
+  let toast = document.getElementById('appErrorToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'appErrorToast';
+    toast.className = 'app-toast hidden';
+    toast.setAttribute('role', 'status');
+    document.body.appendChild(toast);
+  }
+
+  toast.textContent = msg;
+  toast.classList.remove('hidden');
+
+  if (appErrorTimer) clearTimeout(appErrorTimer);
+  appErrorTimer = setTimeout(() => {
+    toast.classList.add('hidden');
+  }, timeoutMs);
 }
 
 // One-time migration of localStorage chats to Supabase
@@ -460,8 +482,11 @@ function getAuthHeaders() {
   if (window.appAuth && window.appAuth.getAuthHeaders) {
     return window.appAuth.getAuthHeaders();
   }
-  if (window._authToken) {
-    return { 'Authorization': 'Bearer ' + window._authToken };
+  if (window.electronAPI && typeof window.electronAPI.getAuthToken === 'function') {
+    const token = window.electronAPI.getAuthToken();
+    if (token) {
+      return { 'Authorization': 'Bearer ' + token };
+    }
   }
   return {};
 }
@@ -721,6 +746,7 @@ function renderChatMessages(messages) {
       const copyBtn = document.createElement('button');
       copyBtn.className = 'action-btn';
       copyBtn.title = 'Copy';
+      copyBtn.setAttribute('aria-label', 'Copy assistant message');
       copyBtn.addEventListener('click', () => copyMessage(copyBtn));
       copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
       actionsDiv.appendChild(copyBtn);
@@ -784,12 +810,13 @@ function renderChatHistory() {
   sortedChats.forEach(chat => {
     const item = document.createElement('div');
     item.className = 'chat-history-item' + (chat.id === currentChatId ? ' active' : '');
+    const safeTitle = escapeHtml(chat.title || 'New chat');
     item.innerHTML = `
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
       </svg>
-      <span class="chat-title">${escapeHtml(chat.title || 'New chat')}</span>
-      <button class="delete-chat-btn" type="button" title="Delete"></button>
+      <span class="chat-title">${safeTitle}</span>
+      <button class="delete-chat-btn" type="button" title="Delete" aria-label="Delete chat ${safeTitle}"></button>
     `;
     const deleteBtn = item.querySelector('.delete-chat-btn');
     deleteBtn.innerHTML = `
@@ -1350,6 +1377,7 @@ function renderPluginsList(plugins) {
     removeBtn.className = 'plugin-remove-btn';
     removeBtn.textContent = '✕';
     removeBtn.title = 'Remove plugin';
+    removeBtn.setAttribute('aria-label', `Remove plugin ${p.name || 'unnamed'}`);
     removeBtn.addEventListener('click', () => {
       removePlugin(p.dirName, p.name);
     });
@@ -1751,7 +1779,7 @@ function handleFileSelect(event, context) {
   const files = Array.from(event.target.files);
   files.forEach(file => {
     if (attachedFiles.length >= 5) {
-      alert('Maximum 5 files allowed');
+      showAppError('Maximum 5 files allowed');
       return;
     }
 
@@ -2114,6 +2142,14 @@ function switchToChatView() {
  * Hides the others. When opening settings/database, stores current view for Back.
  */
 function showView(viewName) {
+  // If auth flow is still visible for any reason, always dismiss it when switching app views.
+  if (authView) {
+    authView.classList.add('hidden');
+  }
+  if (leftSidebar) {
+    leftSidebar.classList.remove('hidden');
+  }
+
   homeView.classList.toggle('hidden', viewName !== 'home');
   chatView.classList.toggle('hidden', viewName !== 'chat');
   if (settingsView) settingsView.classList.toggle('hidden', viewName !== 'settings');
@@ -2525,6 +2561,7 @@ function createAssistantMessage() {
   copyBtn.className = 'action-btn';
   copyBtn.type = 'button';
   copyBtn.title = 'Copy';
+  copyBtn.setAttribute('aria-label', 'Copy assistant message');
   copyBtn.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -2712,8 +2749,9 @@ function renderMarkdown(contentDiv) {
 }
 
 function sanitizeHtml(html) {
-  if (typeof DOMPurify === 'undefined') return html || '';
-  return DOMPurify.sanitize(html || '');
+  const source = html || '';
+  if (typeof DOMPurify === 'undefined') return escapeHtml(source);
+  return DOMPurify.sanitize(source);
 }
 
 function formatToolPreview(toolInput) {
@@ -3378,6 +3416,7 @@ function addInlineBrowserEmbed(contentDiv, url, sessionId) {
   openBtn.type = 'button';
   openBtn.className = 'browser-action-btn';
   openBtn.title = 'Open in new window';
+  openBtn.setAttribute('aria-label', 'Open in new window');
   openBtn.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -3391,6 +3430,7 @@ function addInlineBrowserEmbed(contentDiv, url, sessionId) {
   sidebarBtn.type = 'button';
   sidebarBtn.className = 'browser-action-btn';
   sidebarBtn.title = 'Move to sidebar';
+  sidebarBtn.setAttribute('aria-label', 'Move browser to sidebar');
   sidebarBtn.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -3403,6 +3443,7 @@ function addInlineBrowserEmbed(contentDiv, url, sessionId) {
   fullscreenBtn.type = 'button';
   fullscreenBtn.className = 'browser-action-btn browser-fullscreen-btn';
   fullscreenBtn.title = 'Fullscreen';
+  fullscreenBtn.setAttribute('aria-label', 'Toggle browser fullscreen');
   fullscreenBtn.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <polyline points="15 3 21 3 21 9"></polyline>
@@ -3431,6 +3472,7 @@ function addInlineBrowserEmbed(contentDiv, url, sessionId) {
   copyBtn.type = 'button';
   copyBtn.className = 'browser-copy-url';
   copyBtn.title = 'Copy URL';
+  copyBtn.setAttribute('aria-label', 'Copy browser URL');
   copyBtn.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -3506,6 +3548,7 @@ function showBrowserInSidebar(url, sessionId) {
     inlineBtn.type = 'button';
     inlineBtn.className = 'browser-sidebar-btn';
     inlineBtn.title = 'Show inline';
+    inlineBtn.setAttribute('aria-label', 'Show browser inline');
     inlineBtn.innerHTML = `
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -3518,6 +3561,7 @@ function showBrowserInSidebar(url, sessionId) {
     closeBtn.type = 'button';
     closeBtn.className = 'browser-sidebar-btn';
     closeBtn.title = 'Close';
+    closeBtn.setAttribute('aria-label', 'Close browser');
     closeBtn.innerHTML = `
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -4016,7 +4060,7 @@ function renderReportChart(canvas, chartType, data) {
 async function saveCurrentReport() {
   if (!useApi()) return;
   const name = document.getElementById('builderReportName')?.value?.trim();
-  if (!name) { alert('Please enter a report name'); return; }
+  if (!name) { showAppError('Please enter a report name'); return; }
   const config = getBuilderConfig();
   const saveBtn = document.getElementById('builderSaveBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
@@ -4175,6 +4219,9 @@ function setupJobsEventListeners() {
     document.getElementById('jobExportFormatField')?.classList.toggle('hidden', val !== 'data_export');
     document.getElementById('jobWebhookUrlField')?.classList.toggle('hidden', val !== 'webhook');
     document.getElementById('jobWebhookMethodField')?.classList.toggle('hidden', val !== 'webhook');
+    document.getElementById('jobChatMessagePromptField')?.classList.toggle('hidden', val !== 'chat_message');
+    document.getElementById('jobChatMessageProviderField')?.classList.toggle('hidden', val !== 'chat_message');
+    document.getElementById('jobChatMessageMaxTurnsField')?.classList.toggle('hidden', val !== 'chat_message');
   });
 }
 
@@ -4201,11 +4248,17 @@ function openJobForm(job) {
     if (job.action_type === 'report_generation') {
       document.getElementById('jobReportId').value = cfg.reportId || '';
     } else if (job.action_type === 'data_export') {
-      document.getElementById('jobExportSource').value = cfg.source || 'messages';
+      const source = cfg.source || 'messages';
+      const mappedSource = source === 'chats' ? 'messages' : source;
+      document.getElementById('jobExportSource').value = mappedSource;
       document.getElementById('jobExportFormat').value = cfg.format || 'csv';
     } else if (job.action_type === 'webhook') {
       document.getElementById('jobWebhookUrl').value = cfg.url || '';
       document.getElementById('jobWebhookMethod').value = cfg.method || 'POST';
+    } else if (job.action_type === 'chat_message') {
+      document.getElementById('jobChatMessagePrompt').value = cfg.prompt || '';
+      document.getElementById('jobChatMessageProvider').value = cfg.provider || cfg.providerName || 'claude';
+      document.getElementById('jobChatMessageMaxTurns').value = cfg.maxTurns || '';
     }
   }
   loadSavedReportsForJobForm();
@@ -4247,10 +4300,11 @@ function hideJobForm() {
 async function saveJob() {
   if (!useApi()) return;
   const name = document.getElementById('jobName')?.value?.trim();
-  if (!name) { alert('Please enter a job name'); return; }
+  if (!name) { showAppError('Please enter a job name'); return; }
 
   const jobType = document.getElementById('jobType')?.value;
   const actionType = document.getElementById('jobActionType')?.value;
+  const saveBtn = document.getElementById('jobSaveBtn');
 
   const jobData = {
     name,
@@ -4270,9 +4324,30 @@ async function saveJob() {
     jobData.action_config = { source: document.getElementById('jobExportSource')?.value, format: document.getElementById('jobExportFormat')?.value };
   } else if (actionType === 'webhook') {
     jobData.action_config = { url: document.getElementById('jobWebhookUrl')?.value, method: document.getElementById('jobWebhookMethod')?.value };
+  } else if (actionType === 'chat_message') {
+    const prompt = document.getElementById('jobChatMessagePrompt')?.value?.trim() || '';
+    if (!prompt) {
+      showAppError('Chat message jobs require a prompt');
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+      return;
+    }
+
+    const maxTurnsValue = parseInt(document.getElementById('jobChatMessageMaxTurns')?.value, 10);
+    const actionConfig = {
+      prompt,
+      provider: document.getElementById('jobChatMessageProvider')?.value?.trim() || 'claude'
+    };
+
+    if (Number.isInteger(maxTurnsValue) && maxTurnsValue > 0) {
+      actionConfig.maxTurns = maxTurnsValue;
+    }
+
+    jobData.action_config = actionConfig;
   }
 
-  const saveBtn = document.getElementById('jobSaveBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
   try {
     if (editingJobId) {
@@ -4284,7 +4359,7 @@ async function saveJob() {
     loadJobs();
   } catch (err) {
     console.error('Save job error:', err);
-    alert('Error saving job: ' + err.message);
+    showAppError('Error saving job: ' + err.message);
   } finally {
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
   }
@@ -4510,7 +4585,7 @@ function injectArtifactPill(contentDiv, artifact) {
         console.error('[VAULT] Save artifact error:', err);
         vaultBtn.textContent = 'Save to Vault';
         vaultBtn.disabled = false;
-        alert('Save to Vault failed: ' + err.message);
+    showAppError('Save to Vault failed: ' + err.message);
       }
     });
     wrapper.appendChild(vaultBtn);
@@ -4971,7 +5046,7 @@ async function promptNewFolder() {
     loadVaultContents();
   } catch (err) {
     console.error('[VAULT] Create folder error:', err);
-    alert('Failed to create folder: ' + err.message);
+    showAppError('Failed to create folder: ' + err.message);
   }
 }
 
@@ -4985,7 +5060,7 @@ async function handleVaultUpload() {
     loadVaultContents();
   } catch (err) {
     console.error('[VAULT] Upload error:', err);
-    alert('Upload failed: ' + err.message);
+    showAppError('Upload failed: ' + err.message);
   }
 }
 
@@ -5034,13 +5109,13 @@ async function handleFolderAction(action, folder) {
     try {
       await window.electronAPI.updateVaultFolder(folder.id, { name: name.trim() });
       loadVaultContents();
-    } catch (err) { alert('Rename failed: ' + err.message); }
+    } catch (err) { showAppError('Rename failed: ' + err.message); }
   } else if (action === 'delete') {
     if (!confirm('Delete folder "' + folder.name + '" and all contents?')) return;
     try {
       await window.electronAPI.deleteVaultFolder(folder.id);
       loadVaultContents();
-    } catch (err) { alert('Delete failed: ' + err.message); }
+    } catch (err) { showAppError('Delete failed: ' + err.message); }
   }
 }
 
@@ -5070,7 +5145,7 @@ async function handleAssetAction(action, asset) {
     try {
       await window.electronAPI.updateVaultAsset(asset.id, { display_name: name.trim() });
       loadVaultContents();
-    } catch (err) { alert('Rename failed: ' + err.message); }
+    } catch (err) { showAppError('Rename failed: ' + err.message); }
   } else if (action === 'download') {
     try {
       const res = await window.electronAPI.getVaultAssetUrl(asset.id);
@@ -5080,13 +5155,13 @@ async function handleAssetAction(action, asset) {
         a.download = asset.display_name || asset.file_name;
         a.click();
       }
-    } catch (err) { alert('Download failed: ' + err.message); }
+    } catch (err) { showAppError('Download failed: ' + err.message); }
   } else if (action === 'delete') {
     if (!confirm('Delete "' + (asset.display_name || asset.file_name) + '"?')) return;
     try {
       await window.electronAPI.deleteVaultAsset(asset.id);
       loadVaultContents();
-    } catch (err) { alert('Delete failed: ' + err.message); }
+    } catch (err) { showAppError('Delete failed: ' + err.message); }
   }
 }
 
@@ -5110,6 +5185,8 @@ async function openAssetPreview(asset) {
     title.textContent = asset.display_name || asset.file_name;
     header.appendChild(title);
     const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Close asset preview');
     closeBtn.className = 'vault-preview-close';
     closeBtn.textContent = '\u00D7';
     closeBtn.addEventListener('click', () => overlay.remove());

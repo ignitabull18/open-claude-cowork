@@ -97,7 +97,26 @@ describe('auth-middleware.js', () => {
       await requireAuth(req, res, next);
 
       expect(next).toHaveBeenCalled();
-      expect(req.user).toEqual({ id: 'anonymous', email: null, role: 'anon' });
+      expect(req.user.email).toBeNull();
+      expect(req.user.role).toBe('anon');
+      expect(req.user.id).toMatch(/^anonymous:[0-9a-f]{16}$/);
+    });
+
+    it('uses explicit anonymous session id when provided', async () => {
+      process.env.ALLOW_ANONYMOUS = 'true';
+
+      const { req, res, next } = createMockReqRes({
+        headers: {
+          'x-anon-session-id': 'session-abc',
+          authorization: ''
+        }
+      });
+      req.get = (name) => req.headers[name.toLowerCase()];
+
+      await requireAuth(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.user.id).toBe('anonymous:session-abc');
     });
 
     it('returns 401 when no Authorization header at all and ALLOW_ANONYMOUS is not set', async () => {

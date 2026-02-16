@@ -1,4 +1,5 @@
 import { getAdminClient } from './client.js';
+import crypto from 'crypto';
 
 
 /** Parse ADMIN_EMAILS env var into a Set of lowercased email addresses. */
@@ -6,6 +7,25 @@ function getAdminEmails() {
   const raw = process.env.ADMIN_EMAILS;
   if (!raw) return new Set();
   return new Set(raw.split(',').map(e => e.trim().toLowerCase()).filter(Boolean));
+}
+
+function getAnonymousSessionId(req) {
+  const explicit = req?.get?.('x-anon-session-id');
+  if (explicit && explicit.trim()) {
+    return explicit.trim();
+  }
+
+  const ip = req?.ip || req?.socket?.remoteAddress || req?.connection?.remoteAddress || 'unknown-ip';
+  const ua = req?.get?.('user-agent') || 'unknown-ua';
+  return crypto.createHash('sha256')
+    .update(`${ip}|${ua}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function getActorUserId(req) {
+  if (req?.user?.id !== 'anonymous') return req?.user?.id;
+  return `anonymous:${getAnonymousSessionId(req)}`;
 }
 
 /**
@@ -33,7 +53,7 @@ export async function requireAuth(req, res, next) {
 
   // No token provided
   if (process.env.ALLOW_ANONYMOUS === 'true') {
-    req.user = { id: 'anonymous', email: null, role: 'anon' };
+    req.user = { id: getActorUserId({ ...req, user: { id: 'anonymous' } }), email: null, role: 'anon' };
     return next();
   }
 

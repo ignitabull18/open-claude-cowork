@@ -7,11 +7,11 @@
   let currentSession = null;
 
   // Fetch Supabase config from server, then initialize
-  async function initAuth(onReady) {
-    try {
-      const base = window._apiBase || '';
-      const res = await fetch(base + '/api/config');
-      const config = await res.json();
+    async function initAuth(onReady) {
+      try {
+        const base = window._apiBase || '';
+        const res = await fetch(base + '/api/config');
+        const config = await res.json();
 
       if (!config.supabaseUrl || !config.supabaseAnonKey) {
         console.log('[AUTH] Supabase not configured — skipping auth');
@@ -24,7 +24,6 @@
       // Listen for auth state changes
       supabaseClient.auth.onAuthStateChange((event, session) => {
         currentSession = session;
-        window._authToken = session?.access_token || null;
 
         // Store token for Electron preload
         if (window.electronAPI && window.electronAPI.setAuthToken) {
@@ -35,7 +34,6 @@
       // Check existing session
       const { data: { session } } = await supabaseClient.auth.getSession();
       currentSession = session;
-      window._authToken = session?.access_token || null;
 
       if (window.electronAPI && window.electronAPI.setAuthToken) {
         window.electronAPI.setAuthToken(session?.access_token || null);
@@ -44,7 +42,7 @@
       if (onReady) onReady(session);
     } catch (err) {
       console.error('[AUTH] Init failed:', err);
-      if (onReady) onReady(null);
+      if (onReady) onReady(null, { skipped: true, error: err?.message || String(err) });
     }
   }
 
@@ -70,11 +68,10 @@
     if (!supabaseClient) return;
     await supabaseClient.auth.signOut();
     currentSession = null;
-    window._authToken = null;
   }
 
   function getAuthToken() {
-    return currentSession?.access_token || window._authToken || null;
+    return currentSession?.access_token || null;
   }
 
   function getAuthHeaders() {

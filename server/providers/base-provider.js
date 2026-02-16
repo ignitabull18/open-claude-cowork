@@ -50,7 +50,6 @@ export class BaseProvider {
    */
   _buildSessionKey(chatId, userId) {
     if (userId === undefined || userId === null) return chatId;
-    if (userId === 'anonymous') return chatId;
     return `${userId}:${chatId}`;
   }
 
@@ -62,7 +61,8 @@ export class BaseProvider {
 
     // Fall back to DB
     try {
-      const dbSession = await (userId === undefined || userId === null || userId === 'anonymous'
+      const shouldSkipUserScope = userId === undefined || userId === null || String(userId).startsWith('anonymous');
+      const dbSession = await (shouldSkipUserScope
         ? getProviderSession(chatId, this.name)
         : getProviderSession(chatId, this.name, userId));
       if (dbSession) {

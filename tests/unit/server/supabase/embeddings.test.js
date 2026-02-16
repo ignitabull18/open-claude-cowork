@@ -259,5 +259,21 @@ describe('embeddings.js', () => {
 
       expect(mockFetch).not.toHaveBeenCalled();
     });
+
+    it('does not start a second batch while one is already running', async () => {
+      seedTable('messages', [
+        { id: 'msg-1', content: 'One message', user_id: 'user-1', created_at: '2025-01-01T00:00:00Z' }
+      ]);
+      seedTable('embeddings', []);
+
+      mockOpenAIEmbeddingResponse([0.1, 0.2, 0.3]);
+
+      const first = processUnembeddedMessages();
+      const second = processUnembeddedMessages();
+      await Promise.all([first, second]);
+
+      // If both started, OpenAI would be called twice. Locking should keep it at one.
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
   });
 });

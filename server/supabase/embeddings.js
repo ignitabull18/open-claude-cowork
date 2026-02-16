@@ -6,12 +6,60 @@ const getOpenAIKey = () => process.env.OPENAI_API_KEY;
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
+const EMBEDDING_FETCH_TIMEOUT_MS = 15_000;
+const EMBEDDING_FETCH_RETRIES = 3;
+let processingUnembeddedMessages = false;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, options) {
+  let attempt = 0;
+  let lastErr;
+
+  while (attempt < EMBEDDING_FETCH_RETRIES) {
+    attempt += 1;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), EMBEDDING_FETCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        const err = await response.text();
+        if (response.status >= 500 && attempt < EMBEDDING_FETCH_RETRIES) {
+          lastErr = new Error(`OpenAI embeddings error: ${response.status} ${err}`);
+          await sleep(Math.min(1000 * Math.pow(2, attempt - 1), 5000));
+          continue;
+        }
+        throw new Error(`OpenAI embeddings error: ${response.status} ${err}`);
+      }
+
+      return response;
+    } catch (err) {
+      lastErr = err;
+      if (err.name === 'AbortError') {
+        lastErr = new Error('OpenAI embeddings request timed out');
+      }
+      if (attempt >= EMBEDDING_FETCH_RETRIES) break;
+      await sleep(Math.min(1000 * Math.pow(2, attempt - 1), 5000));
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw lastErr || new Error('OpenAI embeddings request failed');
+}
 
 // Generate embedding via OpenAI API
 async function getEmbedding(text) {
   if (!getOpenAIKey()) throw new Error('getOpenAIKey() not set');
 
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
+  const response = await fetchWithRetry('https://api.openai.com/v1/embeddings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -107,6 +155,11 @@ export async function searchSimilar(queryText, userId, matchCount = 10, threshol
 // Process unembedded messages (batch job)
 export async function processUnembeddedMessages() {
   if (!getOpenAIKey()) return;
+  if (processingUnembeddedMessages) {
+    return;
+  }
+
+  processingUnembeddedMessages = true;
 
   try {
     // Find messages that don't have embeddings yet
@@ -134,9 +187,24 @@ export async function processUnembeddedMessages() {
     console.log(`[EMBED] Processing ${toEmbed.length} unembedded messages`);
 
     for (const msg of toEmbed) {
+      const { data: alreadyEmbedded, error: existsError } = await db()
+        .from('embeddings')
+        .select('id')
+        .eq('source_type', 'message')
+        .eq('source_id', msg.id)
+        .limit(1);
+
+      if (existsError) {
+        console.error('[EMBED] Failed to check existing embedding:', existsError.message);
+        continue;
+      }
+      if (alreadyEmbedded?.length > 0) continue;
+
       await embedMessage(msg.id, msg.content, msg.user_id);
     }
   } catch (err) {
     console.error('[EMBED] Batch processing error:', err.message);
+  } finally {
+    processingUnembeddedMessages = false;
   }
 }

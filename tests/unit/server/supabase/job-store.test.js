@@ -19,7 +19,9 @@ import {
   addJobExecution,
   updateJobExecution,
   getDueJobs,
-  getActiveJobs
+  getActiveJobs,
+  claimDueJob,
+  recoverStaleRunningJobs
 } from '../../../../server/supabase/job-store.js';
 
 describe('job-store.js', () => {
@@ -54,6 +56,24 @@ describe('job-store.js', () => {
       expect(result.action_type).toBe('api_call');
       expect(result.interval_seconds).toBe(86400);
       expect(result.cron_expression).toBe('0 8 * * *');
+    });
+
+    it('accepts snake_case payload fields and legacy action/job aliases', async () => {
+      seedTable('scheduled_jobs', []);
+
+      const result = await createJob('user-1', {
+        name: 'Legacy Job',
+        description: 'Supports legacy payloads',
+        job_type: 'interval',
+        action_type: 'report',
+        action_config: { reportId: 'rpt-123' },
+        interval_seconds: 3600,
+        execute_at: '2025-02-01T08:00:00Z',
+      });
+
+      expect(result.job_type).toBe('recurring');
+      expect(result.action_type).toBe('report_generation');
+      expect(result.interval_seconds).toBe(3600);
     });
 
     it('defaults optional fields to null/empty', async () => {
@@ -184,6 +204,20 @@ describe('job-store.js', () => {
       expect(result.next_run_at).toBe('2025-02-01T12:00:00Z');
       expect(result.last_run_at).toBe('2025-02-01T06:00:00Z');
       expect(result.run_count).toBe(5);
+    });
+
+    it('accepts snake_case and legacy aliases on update', async () => {
+      seedTable('scheduled_jobs', [
+        { id: 'j-2', user_id: 'user-1', name: 'Legacy Update', status: 'active' }
+      ]);
+
+      const result = await updateJob('j-2', 'user-1', {
+        job_type: 'once',
+        action_type: 'report',
+      });
+
+      expect(result.job_type).toBe('one_time');
+      expect(result.action_type).toBe('report_generation');
     });
 
     it('updates lastError field', async () => {
@@ -406,6 +440,53 @@ describe('job-store.js', () => {
       const result = await getActiveJobs();
 
       expect(result).toEqual([]);
+    });
+  });
+
+  // ==================== SCHEDULER LEASE HELPERS ====================
+
+  describe('claimDueJob', () => {
+    it('claims a due job by setting a lease timestamp', async () => {
+      seedTable('scheduled_jobs', [
+        {
+          id: 'j-1',
+          user_id: 'user-1',
+          name: 'Due job',
+          status: 'active',
+          next_run_at: '2025-01-01T00:00:00Z'
+        }
+      ]);
+
+      const result = await claimDueJob('j-1', 'user-1', '2025-01-01T00:00:00Z', 120000);
+
+      expect(result.id).toBe('j-1');
+      expect(result.next_run_at).toBeDefined();
+      expect(result.next_run_at).not.toBe('2025-01-01T00:00:00Z');
+    });
+
+    it('returns null if the job is already claimed', async () => {
+      seedTable('scheduled_jobs', []);
+      const result = await claimDueJob('j-1', 'user-1', '2025-01-01T00:00:00Z', 120000);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('recoverStaleRunningJobs', () => {
+    it('re-calls stale claimed jobs into execution window', async () => {
+      const now = new Date();
+      const stale = new Date(now.getTime() - 120_000).toISOString();
+      const fresh = new Date(now.getTime() + 60_000).toISOString();
+
+      seedTable('scheduled_jobs', [
+        { id: 'j-1', user_id: 'user-1', name: 'Stale', status: 'active', next_run_at: stale },
+        { id: 'j-2', user_id: 'user-1', name: 'Fresh', status: 'active', next_run_at: fresh }
+      ]);
+
+      const result = await recoverStaleRunningJobs(120_000);
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.some(r => r.id === 'j-1')).toBe(true);
+      expect(result.some(r => r.id === 'j-2')).toBe(false);
     });
   });
 });

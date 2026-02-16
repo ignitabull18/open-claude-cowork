@@ -7,6 +7,7 @@
   if (typeof window.electronAPI !== 'undefined') return;
 
   let currentAbortController = null;
+  let authToken = null;
 
   // When origin is file: (e.g. opening index.html in browser), relative fetch hits file:// and 404s.
   var apiBase = '';
@@ -26,15 +27,15 @@
   // Build headers with optional auth token
   function buildHeaders(extra) {
     var headers = Object.assign({ 'Content-Type': 'application/json' }, extra || {});
-    if (window._authToken) {
-      headers['Authorization'] = 'Bearer ' + window._authToken;
+    if (authToken) {
+      headers['Authorization'] = 'Bearer ' + authToken;
     }
     return headers;
   }
 
   window.electronAPI = {
-    setAuthToken: function (token) { window._authToken = token; },
-    getAuthToken: function () { return window._authToken || null; },
+    setAuthToken: function (token) { authToken = token || null; },
+    getAuthToken: function () { return authToken || null; },
 
     abortCurrentRequest: function () {
       if (currentAbortController) {
@@ -443,8 +444,8 @@
       formData.append('file', file);
       if (folderId) formData.append('folderId', folderId);
       if (source) formData.append('source', source);
-      var headers = {};
-      if (window._authToken) headers['Authorization'] = 'Bearer ' + window._authToken;
+      var headers = buildHeaders();
+      delete headers['Content-Type'];
       const response = await fetch(apiUrl('/api/vault/assets/upload'), {
         method: 'POST', headers: headers, body: formData
       });

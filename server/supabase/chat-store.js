@@ -1,4 +1,5 @@
 import { getAdminClient } from './client.js';
+import { fallbackForMissingSchema, isAnonymousUserId } from './supabase-schema-guard.js';
 
 const db = () => getAdminClient();
 
@@ -9,6 +10,8 @@ function ownershipError(message, code = 'CHAT_FORBIDDEN') {
 }
 
 export async function getChatOwner(chatId) {
+  if (!chatId || isAnonymousUserId(chatId)) return null;
+
   const { data, error } = await db()
     .from('chats')
     .select('user_id')
@@ -17,13 +20,14 @@ export async function getChatOwner(chatId) {
 
   if (error) {
     if (error.code === 'PGRST116') return null;
-    throw error;
+    return fallbackForMissingSchema(error, null);
   }
 
   return data?.user_id || null;
 }
 
 export async function createChat({ id, userId, title, provider, model }) {
+  if (isAnonymousUserId(userId)) return null;
   if (!id) {
     const err = new Error('chat id is required');
     err.code = 'VALIDATION_ERROR';
@@ -59,49 +63,53 @@ export async function createChat({ id, userId, title, provider, model }) {
     .insert({ id, user_id: userId, title, provider, model })
     .select()
     .single();
-  if (error) throw error;
+  if (error) return fallbackForMissingSchema(error, null);
   return data;
 }
 
 export async function getUserChats(userId) {
+  if (isAnonymousUserId(userId)) return [];
   const { data, error } = await db()
     .from('chats')
     .select('id, title, provider, model, created_at, updated_at')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false });
-  if (error) throw error;
+  if (error) return fallbackForMissingSchema(error, []);
   return data;
 }
 
 export async function getChat(chatId, userId) {
+  if (isAnonymousUserId(userId)) return null;
   const { data: chat, error: chatError } = await db()
     .from('chats')
     .select('*')
     .eq('id', chatId)
     .eq('user_id', userId)
     .single();
-  if (chatError) throw chatError;
+  if (chatError) return fallbackForMissingSchema(chatError, null);
 
   const { data: messages, error: msgError } = await db()
     .from('messages')
     .select('id, role, content, html, metadata, created_at')
     .eq('chat_id', chatId)
     .order('created_at', { ascending: true });
-  if (msgError) throw msgError;
+  if (msgError) return fallbackForMissingSchema(msgError, []);
 
   return { ...chat, messages };
 }
 
 export async function deleteChat(chatId, userId) {
+  if (isAnonymousUserId(userId)) return;
   const { error } = await db()
     .from('chats')
     .delete()
     .eq('id', chatId)
     .eq('user_id', userId);
-  if (error) throw error;
+  if (error) return fallbackForMissingSchema(error);
 }
 
 export async function updateChatTitle(chatId, userId, title) {
+  if (isAnonymousUserId(userId)) return null;
   const { data, error } = await db()
     .from('chats')
     .update({ title })
@@ -109,11 +117,12 @@ export async function updateChatTitle(chatId, userId, title) {
     .eq('user_id', userId)
     .select()
     .single();
-  if (error) throw error;
+  if (error) return fallbackForMissingSchema(error, null);
   return data;
 }
 
 export async function addMessage({ chatId, userId, role, content, html, metadata }) {
+  if (isAnonymousUserId(userId)) return null;
   const owner = await getChatOwner(chatId);
 
   if (!owner) {
@@ -129,37 +138,57 @@ export async function addMessage({ chatId, userId, role, content, html, metadata
     .insert({ chat_id: chatId, user_id: userId, role, content, html: html || '', metadata: metadata || {} })
     .select()
     .single();
-  if (error) throw error;
+  if (error) return fallbackForMissingSchema(error, null);
   return data;
 }
 
 export async function getChatMessages(chatId) {
+  if (isAnonymousUserId(chatId)) return [];
   const { data, error } = await db()
     .from('messages')
     .select('id, role, content, html, metadata, created_at')
     .eq('chat_id', chatId)
     .order('created_at', { ascending: true });
-  if (error) throw error;
+  if (error) return fallbackForMissingSchema(error, []);
   return data;
 }
 
 export async function getProfile(userId) {
+  if (isAnonymousUserId(userId)) return null;
   const { data, error } = await db()
     .from('profiles')
     .select('*')
     .eq('id', userId)
     .single();
   if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+  if (error && error.code === 'PGRST116') return null;
   return data;
 }
 
 export async function updateProfile(userId, updates) {
+  if (isAnonymousUserId(userId)) return null;
+  if (!updates || typeof updates !== 'object') return null;
+
+  const allowedProfileFields = new Set([
+    'display_name',
+    'avatar_url'
+  ]);
+
+  const sanitizedUpdates = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowedProfileFields.has(key)) {
+      sanitizedUpdates[key] = value;
+    }
+  }
+
+  if (!Object.keys(sanitizedUpdates).length) return null;
+
   const { data, error } = await db()
     .from('profiles')
-    .update(updates)
+    .update(sanitizedUpdates)
     .eq('id', userId)
     .select()
     .single();
-  if (error) throw error;
+  if (error) return fallbackForMissingSchema(error, null);
   return data;
 }

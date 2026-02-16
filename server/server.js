@@ -20,10 +20,11 @@ import * as reportStore from './supabase/report-store.js';
 import * as jobStore from './supabase/job-store.js';
 import * as taskStore from './supabase/task-store.js';
 import * as vaultStore from './supabase/vault-store.js';
-import { startScheduler, triggerJob } from './job-scheduler.js';
+import { startScheduler, triggerJob, stopScheduler } from './job-scheduler.js';
 import { BrowserServer, createBrowserMcpServer } from './browser/index.js';
 import { createDocumentMcpServer } from './documents/index.js';
 import { PluginManager } from './plugins/plugin-manager.js';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,6 +32,11 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const USER_SETTINGS_PATH = path.join(__dirname, 'user-settings.json');
+const USER_SETTINGS_CACHE_TTL_MS = Math.max(1_000, Number(process.env.USER_SETTINGS_CACHE_MS || 5_000));
+const USER_SETTINGS_FILE_MODE = 0o600;
+const COMPOSIO_SESSION_TTL_MS = Math.max(60_000, Number(process.env.COMPOSIO_SESSION_TTL_MS || 30 * 60 * 1000));
+const COMPOSIO_SESSION_MAX = Math.max(20, Number(process.env.COMPOSIO_SESSION_MAX || 200));
+const COMPOSIO_SESSION_CLEANUP_MS = Math.max(30_000, Number(process.env.COMPOSIO_SESSION_CLEANUP_MS || 5 * 60 * 1000));
 const DEFAULT_CORS_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -42,15 +48,270 @@ const configuredOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
   : [];
 const allowedOrigins = new Set(configuredOrigins.length ? configuredOrigins : DEFAULT_CORS_ORIGINS);
+const allowNullOrigin =
+  process.env.NODE_ENV === 'production'
+    ? process.env.ALLOW_NULL_ORIGIN === 'true'
+    : process.env.ALLOW_NULL_ORIGIN !== 'false';
+
+const userSettingsCache = { value: null, loadedAt: 0 };
+let composioSessionCleanupTimer = null;
+
+function isSecureMode() {
+  return process.env.NODE_ENV === 'production' || process.env.SETTINGS_STRICT_MODE === 'true';
+}
+
+function cloneSettings(data) {
+  return JSON.parse(JSON.stringify(data || {}));
+}
+
+function getUserSettingsPath() {
+  const resolved = path.resolve(USER_SETTINGS_PATH);
+  const baseDir = path.resolve(path.dirname(resolved));
+  if (isSecureMode() && !resolved.startsWith(baseDir + path.sep)) {
+    throw new Error('Invalid user settings path');
+  }
+  return resolved;
+}
+
+function readUserSettingsFromDisk() {
+  const settingsPath = getUserSettingsPath();
+  let data = { apiKeys: {}, mcpServers: [] };
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      data = JSON.parse(raw);
+    }
+  } catch (_) {
+    // ignore and fall back to defaults
+  }
+
+  if (!data.apiKeys || typeof data.apiKeys !== 'object') data.apiKeys = {};
+  if (!Array.isArray(data.mcpServers)) data.mcpServers = [];
+
+  return normalizeUserSettings(data);
+}
+
+function normalizeUserSettings(raw) {
+  const baseOutputDir = path.join(os.homedir(), 'Documents', 'generated');
+  const input = raw && typeof raw === 'object' ? raw : {};
+  const apiKeys = input.apiKeys && typeof input.apiKeys === 'object' ? input.apiKeys : {};
+
+  const permissions = input.permissions && typeof input.permissions === 'object' ? input.permissions : {};
+  const browser = input.browser && typeof input.browser === 'object' ? input.browser : {};
+  const documents = input.documents && typeof input.documents === 'object' ? input.documents : {};
+  const instructions = input.instructions && typeof input.instructions === 'object' ? input.instructions : {};
+  const plugins = input.plugins && typeof input.plugins === 'object' ? input.plugins : {};
+
+  return {
+    apiKeys: {
+      anthropic: typeof apiKeys.anthropic === 'string' ? apiKeys.anthropic : '',
+      composio: typeof apiKeys.composio === 'string' ? apiKeys.composio : '',
+      smithery: typeof apiKeys.smithery === 'string' ? apiKeys.smithery : '',
+      dataforseoUsername: typeof apiKeys.dataforseoUsername === 'string' ? apiKeys.dataforseoUsername : '',
+      dataforseoPassword: typeof apiKeys.dataforseoPassword === 'string' ? apiKeys.dataforseoPassword : ''
+    },
+    mcpServers: Array.isArray(input.mcpServers) ? input.mcpServers : [],
+    browser: {
+      enabled: !!browser.enabled,
+      mode: browser.mode || 'clawd',
+      headless: !!browser.headless,
+      backend: browser.backend || 'builtin',
+      cdpPort: Number(browser.cdpPort) || 9222
+    },
+    instructions: {
+      global: typeof instructions.global === 'string' ? instructions.global : '',
+      folders: Array.isArray(instructions.folders) ? instructions.folders : []
+    },
+    permissions: {
+      mode: typeof permissions.mode === 'string' ? permissions.mode : 'bypassPermissions',
+      allowedDirectories: Array.isArray(permissions.allowedDirectories) ? permissions.allowedDirectories : [],
+      fileDeleteConfirmation: permissions.fileDeleteConfirmation !== false
+    },
+    documents: {
+      outputDirectory: typeof documents.outputDirectory === 'string' ? documents.outputDirectory : baseOutputDir
+    },
+    plugins: {
+      enabled: Array.isArray(plugins.enabled) ? plugins.enabled : [],
+      installed: Array.isArray(plugins.installed) ? plugins.installed : []
+    }
+  };
+}
+
+function clearUserSettingsCache() {
+  userSettingsCache.value = null;
+  userSettingsCache.loadedAt = 0;
+}
+
+function readUserSettingsFile({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && userSettingsCache.value && now - userSettingsCache.loadedAt < USER_SETTINGS_CACHE_TTL_MS) {
+    return cloneSettings(userSettingsCache.value);
+  }
+  const normalized = readUserSettingsFromDisk();
+  userSettingsCache.value = normalized;
+  userSettingsCache.loadedAt = now;
+  return cloneSettings(normalized);
+}
+
+function createRateLimiter({ windowMs, maxRequests }) {
+  const buckets = new Map();
+  return function rateLimit(req, res, next) {
+    const key = req.ip || 'unknown';
+    const now = Date.now();
+    let bucket = buckets.get(key);
+
+    if (!bucket || now > bucket.resetAt) {
+      bucket = { count: 0, resetAt: now + windowMs };
+      buckets.set(key, bucket);
+    }
+
+    bucket.count += 1;
+    if (bucket.count > maxRequests) {
+      return res.status(429).json({ error: 'Too many requests. Please retry later.' });
+    }
+
+    next();
+  };
+}
+
+const rateLimit = {
+  chat: createRateLimiter({ windowMs: 60_000, maxRequests: 60 }),
+  upload: createRateLimiter({ windowMs: 60_000, maxRequests: 20 }),
+  settings: createRateLimiter({ windowMs: 60_000, maxRequests: 30 }),
+  reports: createRateLimiter({ windowMs: 60_000, maxRequests: 45 }),
+  jobs: createRateLimiter({ windowMs: 60_000, maxRequests: 45 }),
+  vault: createRateLimiter({ windowMs: 60_000, maxRequests: 45 }),
+  tasks: createRateLimiter({ windowMs: 60_000, maxRequests: 45 }),
+  search: createRateLimiter({ windowMs: 60_000, maxRequests: 30 })
+};
+
+function sendInternalError(res, err) {
+  if (err) {
+    console.error('[SERVER] Internal error:', err.message || String(err));
+  }
+  return res.status(500).json({ error: 'Internal server error' });
+}
+
+function getComposioSession(userId) {
+  const entry = composioSessions.get(userId);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    composioSessions.delete(userId);
+    return null;
+  }
+  composioSessions.delete(userId);
+  entry.lastUsed = Date.now();
+  entry.expiresAt = entry.lastUsed + COMPOSIO_SESSION_TTL_MS;
+  composioSessions.set(userId, entry);
+  return entry.session;
+}
+
+function setComposioSession(userId, session) {
+  if (!userId || !session) return;
+  if (composioSessions.has(userId)) {
+    composioSessions.delete(userId);
+  }
+  composioSessions.set(userId, {
+    session,
+    lastUsed: Date.now(),
+    expiresAt: Date.now() + COMPOSIO_SESSION_TTL_MS
+  });
+  while (composioSessions.size > COMPOSIO_SESSION_MAX) {
+    const oldest = composioSessions.keys().next();
+    if (oldest.done) break;
+    composioSessions.delete(oldest.value);
+  }
+}
+
+function cleanupExpiredComposioSessions() {
+  const now = Date.now();
+  for (const [userId, entry] of composioSessions.entries()) {
+    if (!entry || entry.expiresAt <= now) {
+      composioSessions.delete(userId);
+    }
+  }
+}
 
 function isOriginAllowed(origin) {
-  if (!origin) return true; // file:// and non-browser calls
+  if (!origin || origin === 'null') {
+    return allowNullOrigin || process.env.NODE_ENV === 'test';
+  }
   if (allowedOrigins.has('*')) return true;
   return allowedOrigins.has(origin);
 }
 
+function getAnonymousSessionKey(req) {
+  const explicit = req.get?.('x-anon-session-id');
+  if (explicit && explicit.trim()) return explicit.trim();
+
+  const ip = req.ip || 'unknown-ip';
+  const ua = req.get?.('user-agent') || 'unknown-ua';
+  return crypto.createHash('sha256')
+    .update(`${ip}|${ua}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function getActorUserId(req) {
+  if (req?.user?.id !== 'anonymous') return req.user?.id;
+  return `anonymous:${getAnonymousSessionKey(req)}`;
+}
+
+function isAnonymousUserId(userId) {
+  return typeof userId === 'string' && userId.startsWith('anonymous');
+}
+
 function shouldFailDbWrite(err) {
   return !!(err && ['CHAT_FORBIDDEN', 'CHAT_OWNERSHIP_VIOLATION', 'PGRST116', 'VALIDATION_ERROR'].includes(err.code));
+}
+
+function sanitizeTextInput(value, { maxLength, allowEmpty } = {}) {
+  if (typeof value !== 'string') return allowEmpty ? '' : null;
+  const text = value.trim();
+  if (!text && !allowEmpty) return null;
+  if (maxLength && text.length > maxLength) {
+    return text.slice(0, maxLength);
+  }
+  return text;
+}
+
+function sanitizeProviderName(providerName) {
+  const normalized = sanitizeTextInput(providerName, { allowEmpty: true, maxLength: 40 });
+  if (!normalized) return 'claude';
+  return normalized.toLowerCase();
+}
+
+function sanitizeChatId(chatId) {
+  const value = sanitizeTextInput(chatId, { allowEmpty: true, maxLength: 160 });
+  if (!value) return null;
+  if (!/^[A-Za-z0-9._-]+$/.test(value)) return null;
+  return value;
+}
+
+function isUuid(v) {
+  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+function isSafeParamId(value) {
+  if (!value || typeof value !== 'string') return false;
+  if (value.length > 200) return false;
+  return /^[A-Za-z0-9._-]+$/.test(value) || isUuid(value);
+}
+
+function applyUserSettingsToEnv(settings) {
+  const data = settings || {};
+  if (data.apiKeys?.anthropic) process.env.ANTHROPIC_API_KEY = data.apiKeys.anthropic;
+  if (data.apiKeys?.composio) process.env.COMPOSIO_API_KEY = data.apiKeys.composio;
+  if (data.apiKeys?.smithery) process.env.SMITHERY_API_KEY = data.apiKeys.smithery;
+  if (data.apiKeys?.dataforseoUsername) process.env.DATAFORSEO_USERNAME = data.apiKeys.dataforseoUsername;
+  if (data.apiKeys?.dataforseoPassword) process.env.DATAFORSEO_PASSWORD = data.apiKeys.dataforseoPassword;
+}
+
+function scheduleComposioSessionCleanup() {
+  if (composioSessionCleanupTimer) {
+    clearInterval(composioSessionCleanupTimer);
+  }
+  composioSessionCleanupTimer = setInterval(cleanupExpiredComposioSessions, COMPOSIO_SESSION_CLEANUP_MS);
 }
 
 async function assertChatOwnedByUser(chatId, userId) {
@@ -64,44 +325,24 @@ async function assertChatOwnedByUser(chatId, userId) {
   return { ok: true };
 }
 
-/** Load user-settings from disk; apply API keys to process.env so SDKs use them. */
-function loadUserSettings() {
-  let data = { apiKeys: {}, mcpServers: [] };
-  try {
-    if (fs.existsSync(USER_SETTINGS_PATH)) {
-      const raw = fs.readFileSync(USER_SETTINGS_PATH, 'utf8');
-      data = JSON.parse(raw);
-      if (!data.apiKeys) data.apiKeys = {};
-      if (!Array.isArray(data.mcpServers)) data.mcpServers = [];
-    }
-  } catch (err) {
-    console.warn('[SETTINGS] Could not load user-settings:', err.message);
-  }
-  if (data.apiKeys.anthropic) {
-    process.env.ANTHROPIC_API_KEY = data.apiKeys.anthropic;
-  }
-  if (data.apiKeys.composio) {
-    process.env.COMPOSIO_API_KEY = data.apiKeys.composio;
-  }
-  if (data.apiKeys.smithery) {
-    process.env.SMITHERY_API_KEY = data.apiKeys.smithery;
-  }
-  if (data.apiKeys.dataforseoUsername) {
-    process.env.DATAFORSEO_USERNAME = data.apiKeys.dataforseoUsername;
-  }
-  if (data.apiKeys.dataforseoPassword) {
-    process.env.DATAFORSEO_PASSWORD = data.apiKeys.dataforseoPassword;
-  }
-  return data;
-}
-
 /** Save user-settings to disk. */
 function saveUserSettings(data) {
   const dir = path.dirname(USER_SETTINGS_PATH);
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  fs.writeFileSync(USER_SETTINGS_PATH, JSON.stringify(data, null, 2), 'utf8');
+  const normalized = normalizeUserSettings(data);
+  fs.writeFileSync(
+    USER_SETTINGS_PATH,
+    JSON.stringify(normalized, null, 2),
+    { encoding: 'utf8', mode: USER_SETTINGS_FILE_MODE }
+  );
+  try {
+    fs.chmodSync(USER_SETTINGS_PATH, USER_SETTINGS_FILE_MODE);
+  } catch (_) {
+    // Ignore if chmod is unsupported in the environment.
+  }
+  clearUserSettingsCache();
 }
 
 /** Mask API key for safe response (last 4 chars or null). */
@@ -122,10 +363,11 @@ function sanitizeMcpName(name, id) {
 }
 
 // Apply user-settings API keys before any SDK that reads env
-loadUserSettings();
+applyUserSettingsToEnv(readUserSettingsFile({ force: true }));
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+let isShuttingDown = false;
 
 // Initialize Composio (uses process.env.COMPOSIO_API_KEY)
 const composio = new Composio();
@@ -243,7 +485,7 @@ async function initializeComposioSession() {
   console.log('[COMPOSIO] Pre-initializing session for:', defaultUserId);
   try {
     defaultComposioSession = await composio.create(defaultUserId);
-    composioSessions.set(defaultUserId, defaultComposioSession);
+    setComposioSession(defaultUserId, defaultComposioSession);
     console.log('[COMPOSIO] Session ready with MCP URL:', defaultComposioSession.mcp.url);
 
     const mcpServers = buildMcpServers(defaultComposioSession);
@@ -306,44 +548,6 @@ function initializeDataforseoConfig() {
       updateOpencodeConfig(buildMcpServers(defaultComposioSession));
     }
   }
-}
-
-/**
- * Read user-settings from disk (no env application). Returns { apiKeys, mcpServers }.
- */
-function readUserSettingsFile() {
-  let data = { apiKeys: {}, mcpServers: [] };
-  try {
-    if (fs.existsSync(USER_SETTINGS_PATH)) {
-      const raw = fs.readFileSync(USER_SETTINGS_PATH, 'utf8');
-      data = JSON.parse(raw);
-      if (!data.apiKeys) data.apiKeys = {};
-      if (!Array.isArray(data.mcpServers)) data.mcpServers = [];
-    }
-  } catch (_) {
-    // ignore
-  }
-  // Ensure browser settings have defaults
-  if (!data.browser) {
-    data.browser = { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 };
-  }
-  // Ensure instructions have defaults
-  if (!data.instructions) {
-    data.instructions = { global: '', folders: [] };
-  }
-  // Ensure permissions have defaults
-  if (!data.permissions) {
-    data.permissions = { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true };
-  }
-  // Ensure documents settings have defaults
-  if (!data.documents) {
-    data.documents = { outputDirectory: path.join(os.homedir(), 'Documents', 'generated') };
-  }
-  // Ensure plugins settings have defaults
-  if (!data.plugins) {
-    data.plugins = { enabled: [], installed: [] };
-  }
-  return data;
 }
 
 /**
@@ -468,7 +672,7 @@ app.use(cors({
     }
     return callback(new Error('Not allowed by CORS policy'));
   },
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-anon-session-id'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
 app.use(express.json());
@@ -482,68 +686,83 @@ app.get('/api/config', (_req, res) => {
 });
 
 // ==================== CHAT CRUD ENDPOINTS ====================
-app.get('/api/chats', requireAuth, async (req, res) => {
+app.get('/api/chats', requireAuth, rateLimit.reports, async (req, res) => {
   try {
     const chats = await chatStore.getUserChats(req.user.id);
     res.json({ chats });
   } catch (err) {
     console.error('[CHATS] List error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.get('/api/chats/:chatId', requireAuth, async (req, res) => {
+app.get('/api/chats/:chatId', requireAuth, rateLimit.reports, async (req, res) => {
   try {
+    if (!isSafeParamId(req.params.chatId)) {
+      return res.status(400).json({ error: 'Invalid chatId' });
+    }
     const chat = await chatStore.getChat(req.params.chatId, req.user.id);
     res.json(chat);
   } catch (err) {
     if (err.code === 'PGRST116') return res.status(404).json({ error: 'Chat not found' });
     console.error('[CHATS] Get error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.post('/api/chats', requireAuth, async (req, res) => {
+app.post('/api/chats', requireAuth, rateLimit.reports, async (req, res) => {
   try {
     const { id, title, provider, model } = req.body;
+    if (id && !isSafeParamId(id)) {
+      return res.status(400).json({ error: 'Invalid chatId' });
+    }
     const chat = await chatStore.createChat({ id, userId: req.user.id, title, provider, model });
     res.json(chat);
   } catch (err) {
     console.error('[CHATS] Create error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.delete('/api/chats/:chatId', requireAuth, async (req, res) => {
+app.delete('/api/chats/:chatId', requireAuth, rateLimit.reports, async (req, res) => {
   try {
+    if (!isSafeParamId(req.params.chatId)) {
+      return res.status(400).json({ error: 'Invalid chatId' });
+    }
     await chatStore.deleteChat(req.params.chatId, req.user.id);
     res.json({ success: true });
   } catch (err) {
     console.error('[CHATS] Delete error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.patch('/api/chats/:chatId', requireAuth, async (req, res) => {
+app.patch('/api/chats/:chatId', requireAuth, rateLimit.reports, async (req, res) => {
   try {
+    if (!isSafeParamId(req.params.chatId)) {
+      return res.status(400).json({ error: 'Invalid chatId' });
+    }
     const { title } = req.body;
     const chat = await chatStore.updateChatTitle(req.params.chatId, req.user.id, title);
     res.json(chat);
   } catch (err) {
     console.error('[CHATS] Update error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // ==================== MESSAGES ENDPOINT ====================
-app.post('/api/messages', requireAuth, async (req, res) => {
+app.post('/api/messages', requireAuth, rateLimit.reports, async (req, res) => {
   try {
     const { chatId, role, content, html, metadata } = req.body;
+    if (!isSafeParamId(chatId)) {
+      return res.status(400).json({ error: 'Invalid chatId' });
+    }
     const msg = await chatStore.addMessage({ chatId, userId: req.user.id, role, content, html, metadata });
     res.json(msg);
   } catch (err) {
     console.error('[MESSAGES] Create error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -554,7 +773,7 @@ app.get('/api/profile', requireAuth, async (req, res) => {
     res.json(profile || {});
   } catch (err) {
     console.error('[PROFILE] Get error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -564,14 +783,14 @@ app.patch('/api/profile', requireAuth, async (req, res) => {
     res.json(profile);
   } catch (err) {
     console.error('[PROFILE] Update error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // ==================== FILE UPLOAD/DOWNLOAD ====================
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max
 
-app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => {
+app.post('/api/upload', requireAuth, rateLimit.upload, upload.single('file'), async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'File storage requires Supabase' });
   if (!req.file) return res.status(400).json({ error: 'No file provided' });
 
@@ -585,7 +804,7 @@ app.post('/api/upload', requireAuth, upload.single('file'), async (req, res) => 
     res.json(attachment);
   } catch (err) {
     console.error('[UPLOAD] Error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -597,26 +816,26 @@ app.get('/api/files/:attachmentId/url', requireAuth, async (req, res) => {
     res.json({ url });
   } catch (err) {
     console.error('[FILES] URL error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // ==================== VAULT ENDPOINTS ====================
 
 // List folders at a given level (root when parentId is omitted)
-app.get('/api/vault/folders', requireAuth, async (req, res) => {
+app.get('/api/vault/folders', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     const folders = await vaultStore.getUserFolders(req.user.id, req.query.parentId || null);
     res.json(folders);
   } catch (err) {
     console.error('[VAULT] List folders error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Create folder
-app.post('/api/vault/folders', requireAuth, async (req, res) => {
+app.post('/api/vault/folders', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   const { name, parentId } = req.body;
   if (!name) return res.status(400).json({ error: 'name is required' });
@@ -625,12 +844,12 @@ app.post('/api/vault/folders', requireAuth, async (req, res) => {
     res.json(folder);
   } catch (err) {
     console.error('[VAULT] Create folder error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Rename or move folder
-app.patch('/api/vault/folders/:id', requireAuth, async (req, res) => {
+app.patch('/api/vault/folders/:id', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     let folder;
@@ -643,36 +862,36 @@ app.patch('/api/vault/folders/:id', requireAuth, async (req, res) => {
     res.json(folder || { ok: true });
   } catch (err) {
     console.error('[VAULT] Update folder error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Delete folder (cascade)
-app.delete('/api/vault/folders/:id', requireAuth, async (req, res) => {
+app.delete('/api/vault/folders/:id', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     await vaultStore.deleteFolder(req.params.id, req.user.id);
     res.json({ ok: true });
   } catch (err) {
     console.error('[VAULT] Delete folder error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Folder breadcrumbs
-app.get('/api/vault/folders/:id/breadcrumbs', requireAuth, async (req, res) => {
+app.get('/api/vault/folders/:id/breadcrumbs', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     const crumbs = await vaultStore.getFolderBreadcrumbs(req.params.id, req.user.id);
     res.json(crumbs);
   } catch (err) {
     console.error('[VAULT] Breadcrumbs error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // List vault assets
-app.get('/api/vault/assets', requireAuth, async (req, res) => {
+app.get('/api/vault/assets', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     const assets = await vaultStore.getVaultAssets(req.user.id, req.query.folderId || null, {
@@ -685,12 +904,12 @@ app.get('/api/vault/assets', requireAuth, async (req, res) => {
     res.json(assets);
   } catch (err) {
     console.error('[VAULT] List assets error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Upload to vault
-app.post('/api/vault/assets/upload', requireAuth, upload.single('file'), async (req, res) => {
+app.post('/api/vault/assets/upload', requireAuth, rateLimit.vault, upload.single('file'), async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   if (!req.file) return res.status(400).json({ error: 'No file provided' });
   try {
@@ -711,60 +930,71 @@ app.post('/api/vault/assets/upload', requireAuth, upload.single('file'), async (
     }
   } catch (err) {
     console.error('[VAULT] Upload error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Update asset (move, rename, describe)
-app.patch('/api/vault/assets/:id', requireAuth, async (req, res) => {
+app.patch('/api/vault/assets/:id', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     const asset = await vaultStore.updateAsset(req.params.id, req.user.id, req.body);
     res.json(asset);
   } catch (err) {
     console.error('[VAULT] Update asset error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Delete asset
-app.delete('/api/vault/assets/:id', requireAuth, async (req, res) => {
+app.delete('/api/vault/assets/:id', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     await storage.deleteFile(req.params.id, req.user.id);
     res.json({ ok: true });
   } catch (err) {
     console.error('[VAULT] Delete asset error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Signed URL for asset
-app.get('/api/vault/assets/:id/url', requireAuth, async (req, res) => {
+app.get('/api/vault/assets/:id', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     const url = await storage.getFileUrl(req.params.id, req.user.id);
     res.json({ url });
   } catch (err) {
     console.error('[VAULT] Asset URL error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
+  }
+});
+
+app.get('/api/vault/assets/:id/url', requireAuth, rateLimit.vault, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
+  try {
+    const url = await storage.getFileUrl(req.params.id, req.user.id);
+    res.json({ url });
+  } catch (err) {
+    console.error('[VAULT] Asset URL alias error:', err);
+    sendInternalError(res, err);
   }
 });
 
 // Vault stats
-app.get('/api/vault/stats', requireAuth, async (req, res) => {
+app.get('/api/vault/stats', requireAuth, rateLimit.vault, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     const stats = await vaultStore.getVaultStats(req.user.id);
     res.json(stats);
   } catch (err) {
     console.error('[VAULT] Stats error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // ==================== SEARCH ENDPOINT ====================
-app.post('/api/search', requireAuth, async (req, res) => {
+app.post('/api/search', requireAuth, rateLimit.search, async (req, res) => {
   if (!isSupabaseConfigured() || !process.env.OPENAI_API_KEY) {
     return res.status(501).json({ error: 'Search requires Supabase + OpenAI API key' });
   }
@@ -777,7 +1007,7 @@ app.post('/api/search', requireAuth, async (req, res) => {
     res.json({ results });
   } catch (err) {
     console.error('[SEARCH] Error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -796,7 +1026,7 @@ app.get('/api/database/tables', requireAuth, requireAdmin, async (req, res) => {
     res.json({ tables });
   } catch (err) {
     console.error('[DB-EXPLORER] List tables error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -811,7 +1041,7 @@ app.get('/api/database/tables/:tableName/schema', requireAuth, requireAdmin, asy
     res.json({ columns, indexes });
   } catch (err) {
     console.error('[DB-EXPLORER] Schema error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -842,7 +1072,7 @@ app.get('/api/database/tables/:tableName/rows', requireAuth, requireAdmin, async
     res.json(result);
   } catch (err) {
     console.error('[DB-EXPLORER] Rows error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -854,24 +1084,24 @@ app.get('/api/database/stats', requireAuth, requireAdmin, async (req, res) => {
     res.json(stats);
   } catch (err) {
     console.error('[DB-EXPLORER] Stats error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // ==================== REPORT ENDPOINTS ====================
 
-app.get('/api/reports/summary', requireAuth, async (req, res) => {
+app.get('/api/reports/summary', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const data = await reportStore.getSummary(req.user.id);
     res.json(data);
   } catch (err) {
     console.error('[REPORTS] Summary error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.get('/api/reports/daily-messages', requireAuth, async (req, res) => {
+app.get('/api/reports/daily-messages', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const days = parseInt(req.query.days) || 30;
@@ -879,11 +1109,11 @@ app.get('/api/reports/daily-messages', requireAuth, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('[REPORTS] Daily messages error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.get('/api/reports/provider-usage', requireAuth, async (req, res) => {
+app.get('/api/reports/provider-usage', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const days = parseInt(req.query.days) || 30;
@@ -891,11 +1121,11 @@ app.get('/api/reports/provider-usage', requireAuth, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('[REPORTS] Provider usage error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.get('/api/reports/tool-usage', requireAuth, async (req, res) => {
+app.get('/api/reports/tool-usage', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const days = parseInt(req.query.days) || 30;
@@ -903,11 +1133,11 @@ app.get('/api/reports/tool-usage', requireAuth, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('[REPORTS] Tool usage error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.post('/api/reports/query', requireAuth, async (req, res) => {
+app.post('/api/reports/query', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const config = req.body;
@@ -916,23 +1146,23 @@ app.post('/api/reports/query', requireAuth, async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('[REPORTS] Custom query error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Saved reports CRUD
-app.get('/api/reports/saved', requireAuth, async (req, res) => {
+app.get('/api/reports/saved', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const reports = await reportStore.getSavedReports(req.user.id);
     res.json({ reports });
   } catch (err) {
     console.error('[REPORTS] List saved error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.post('/api/reports/saved', requireAuth, async (req, res) => {
+app.post('/api/reports/saved', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const { name, description, reportConfig } = req.body;
@@ -941,11 +1171,11 @@ app.post('/api/reports/saved', requireAuth, async (req, res) => {
     res.json(report);
   } catch (err) {
     console.error('[REPORTS] Create saved error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.get('/api/reports/saved/:reportId', requireAuth, async (req, res) => {
+app.get('/api/reports/saved/:reportId', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const report = await reportStore.getSavedReport(req.params.reportId, req.user.id);
@@ -954,71 +1184,71 @@ app.get('/api/reports/saved/:reportId', requireAuth, async (req, res) => {
   } catch (err) {
     if (err.code === 'PGRST116') return res.status(404).json({ error: 'Report not found' });
     console.error('[REPORTS] Get saved error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.patch('/api/reports/saved/:reportId', requireAuth, async (req, res) => {
+app.patch('/api/reports/saved/:reportId', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const report = await reportStore.updateSavedReport(req.params.reportId, req.user.id, req.body);
     res.json(report);
   } catch (err) {
     console.error('[REPORTS] Update saved error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.delete('/api/reports/saved/:reportId', requireAuth, async (req, res) => {
+app.delete('/api/reports/saved/:reportId', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     await reportStore.deleteSavedReport(req.params.reportId, req.user.id);
     res.json({ success: true });
   } catch (err) {
     console.error('[REPORTS] Delete saved error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.post('/api/reports/saved/:reportId/run', requireAuth, async (req, res) => {
+app.post('/api/reports/saved/:reportId/run', requireAuth, rateLimit.reports, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const report = await reportStore.getSavedReport(req.params.reportId, req.user.id);
     if (!report) return res.status(404).json({ error: 'Report not found' });
     const result = await reportStore.executeCustomQuery(req.user.id, report.report_config);
-    await reportStore.updateReportResult(req.params.reportId, result);
+    await reportStore.updateReportResult(req.params.reportId, req.user?.id, result);
     res.json({ result });
   } catch (err) {
     console.error('[REPORTS] Run saved error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // ==================== JOB ENDPOINTS ====================
 
-app.get('/api/jobs', requireAuth, async (req, res) => {
+app.get('/api/jobs', requireAuth, rateLimit.jobs, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Jobs require Supabase' });
   try {
     const jobs = await jobStore.getUserJobs(req.user.id);
     res.json({ jobs });
   } catch (err) {
     console.error('[JOBS] List error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.post('/api/jobs', requireAuth, async (req, res) => {
+app.post('/api/jobs', requireAuth, rateLimit.jobs, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Jobs require Supabase' });
   try {
     const job = await jobStore.createJob(req.user.id, req.body);
     res.json(job);
   } catch (err) {
     console.error('[JOBS] Create error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.get('/api/jobs/:jobId', requireAuth, async (req, res) => {
+app.get('/api/jobs/:jobId', requireAuth, rateLimit.jobs, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Jobs require Supabase' });
   try {
     const job = await jobStore.getJob(req.params.jobId, req.user.id);
@@ -1027,33 +1257,33 @@ app.get('/api/jobs/:jobId', requireAuth, async (req, res) => {
   } catch (err) {
     if (err.code === 'PGRST116') return res.status(404).json({ error: 'Job not found' });
     console.error('[JOBS] Get error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.patch('/api/jobs/:jobId', requireAuth, async (req, res) => {
+app.patch('/api/jobs/:jobId', requireAuth, rateLimit.jobs, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Jobs require Supabase' });
   try {
     const job = await jobStore.updateJob(req.params.jobId, req.user.id, req.body);
     res.json(job);
   } catch (err) {
     console.error('[JOBS] Update error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.delete('/api/jobs/:jobId', requireAuth, async (req, res) => {
+app.delete('/api/jobs/:jobId', requireAuth, rateLimit.jobs, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Jobs require Supabase' });
   try {
     await jobStore.deleteJob(req.params.jobId, req.user.id);
     res.json({ success: true });
   } catch (err) {
     console.error('[JOBS] Delete error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.get('/api/jobs/:jobId/executions', requireAuth, async (req, res) => {
+app.get('/api/jobs/:jobId/executions', requireAuth, rateLimit.jobs, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Jobs require Supabase' });
   try {
     const limit = parseInt(req.query.limit) || 10;
@@ -1061,11 +1291,11 @@ app.get('/api/jobs/:jobId/executions', requireAuth, async (req, res) => {
     res.json({ executions });
   } catch (err) {
     console.error('[JOBS] Executions error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.post('/api/jobs/:jobId/run', requireAuth, async (req, res) => {
+app.post('/api/jobs/:jobId/run', requireAuth, rateLimit.jobs, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Jobs require Supabase' });
   try {
     await triggerJob(req.params.jobId, req.user.id);
@@ -1073,78 +1303,88 @@ app.post('/api/jobs/:jobId/run', requireAuth, async (req, res) => {
     res.json(job);
   } catch (err) {
     console.error('[JOBS] Run error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // ==================== TASK MANAGEMENT ENDPOINTS ====================
 
 // --- Labels (before :taskId to avoid param capture) ---
-app.get('/api/tasks/labels', requireAuth, async (req, res) => {
+app.get('/api/tasks/labels', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
     const labels = await taskStore.getUserLabels(req.user.id);
     res.json(labels);
   } catch (err) {
     console.error('[TASKS] List labels error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
-
-app.post('/api/tasks/labels', requireAuth, async (req, res) => {
+app.post('/api/tasks/labels', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
     const label = await taskStore.createLabel(req.user.id, req.body);
     res.status(201).json(label);
   } catch (err) {
     console.error('[TASKS] Create label error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.put('/api/tasks/labels/:labelId', requireAuth, async (req, res) => {
+app.put('/api/tasks/labels/:labelId', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
+    if (!isSafeParamId(req.params.labelId)) {
+      return res.status(400).json({ error: 'Invalid labelId' });
+    }
     const label = await taskStore.updateLabel(req.params.labelId, req.user.id, req.body);
     res.json(label);
   } catch (err) {
     console.error('[TASKS] Update label error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.delete('/api/tasks/labels/:labelId', requireAuth, async (req, res) => {
+app.delete('/api/tasks/labels/:labelId', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
+    if (!isSafeParamId(req.params.labelId)) {
+      return res.status(400).json({ error: 'Invalid labelId' });
+    }
     await taskStore.deleteLabel(req.params.labelId, req.user.id);
     res.status(204).end();
   } catch (err) {
     console.error('[TASKS] Delete label error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // --- Calendar / Board helpers (before :taskId) ---
-app.get('/api/tasks/calendar/range', requireAuth, async (req, res) => {
+app.get('/api/tasks/calendar/range', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'start and end query params required' });
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid start or end date' });
+    }
     const tasks = await taskStore.getTasksInRange(req.user.id, start, end);
     res.json(tasks);
   } catch (err) {
     console.error('[TASKS] Calendar range error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.get('/api/tasks/board', requireAuth, async (req, res) => {
+app.get('/api/tasks/board', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
     const tasks = await taskStore.getTasksByStatus(req.user.id);
     res.json(tasks);
   } catch (err) {
     console.error('[TASKS] Board error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // --- Tasks CRUD ---
-app.get('/api/tasks', requireAuth, async (req, res) => {
+app.get('/api/tasks', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
     const opts = {};
     if (req.query.status) opts.status = req.query.status;
@@ -1155,54 +1395,66 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     res.json(tasks);
   } catch (err) {
     console.error('[TASKS] List error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.post('/api/tasks', requireAuth, async (req, res) => {
+app.post('/api/tasks', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
     if (!req.body.title) return res.status(400).json({ error: 'title is required' });
     const task = await taskStore.createTask(req.user.id, req.body);
     res.status(201).json(task);
   } catch (err) {
     console.error('[TASKS] Create error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.get('/api/tasks/:taskId', requireAuth, async (req, res) => {
+app.get('/api/tasks/:taskId', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
+    if (!isSafeParamId(req.params.taskId)) {
+      return res.status(400).json({ error: 'Invalid taskId' });
+    }
     const task = await taskStore.getTask(req.params.taskId, req.user.id);
     if (!task) return res.status(404).json({ error: 'Task not found' });
     res.json(task);
   } catch (err) {
     console.error('[TASKS] Get error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.put('/api/tasks/:taskId', requireAuth, async (req, res) => {
+app.put('/api/tasks/:taskId', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
+    if (!isSafeParamId(req.params.taskId)) {
+      return res.status(400).json({ error: 'Invalid taskId' });
+    }
     const task = await taskStore.updateTask(req.params.taskId, req.user.id, req.body);
     res.json(task);
   } catch (err) {
     console.error('[TASKS] Update error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.delete('/api/tasks/:taskId', requireAuth, async (req, res) => {
+app.delete('/api/tasks/:taskId', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
+    if (!isSafeParamId(req.params.taskId)) {
+      return res.status(400).json({ error: 'Invalid taskId' });
+    }
     await taskStore.deleteTask(req.params.taskId, req.user.id);
     res.status(204).end();
   } catch (err) {
     console.error('[TASKS] Delete error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.put('/api/tasks/:taskId/reorder', requireAuth, async (req, res) => {
+app.put('/api/tasks/:taskId/reorder', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
+    if (!isSafeParamId(req.params.taskId)) {
+      return res.status(400).json({ error: 'Invalid taskId' });
+    }
     const { newStatus, newPosition } = req.body;
     if (!newStatus || newPosition === undefined) {
       return res.status(400).json({ error: 'newStatus and newPosition required' });
@@ -1211,33 +1463,39 @@ app.put('/api/tasks/:taskId/reorder', requireAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('[TASKS] Reorder error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // --- Label assignments ---
-app.post('/api/tasks/:taskId/labels/:labelId', requireAuth, async (req, res) => {
+app.post('/api/tasks/:taskId/labels/:labelId', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
-    const assignment = await taskStore.assignLabel(req.params.taskId, req.params.labelId);
+    if (!isSafeParamId(req.params.taskId) || !isSafeParamId(req.params.labelId)) {
+      return res.status(400).json({ error: 'Invalid taskId or labelId' });
+    }
+    const assignment = await taskStore.assignLabel(req.params.taskId, req.params.labelId, req.user.id);
     res.status(201).json(assignment);
   } catch (err) {
     console.error('[TASKS] Assign label error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
-app.delete('/api/tasks/:taskId/labels/:labelId', requireAuth, async (req, res) => {
+app.delete('/api/tasks/:taskId/labels/:labelId', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
-    await taskStore.removeLabel(req.params.taskId, req.params.labelId);
+    if (!isSafeParamId(req.params.taskId) || !isSafeParamId(req.params.labelId)) {
+      return res.status(400).json({ error: 'Invalid taskId or labelId' });
+    }
+    await taskStore.removeLabel(req.params.taskId, req.params.labelId, req.user.id);
     res.status(204).end();
   } catch (err) {
     console.error('[TASKS] Remove label error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // ==================== CHAT STREAMING ENDPOINT ====================
-app.post('/api/chat', requireAuth, async (req, res) => {
+app.post('/api/chat', requireAuth, rateLimit.chat, async (req, res) => {
   const {
     message,
     chatId,
@@ -1246,15 +1504,19 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     agents
   } = req.body;
 
-  const userId = req.user.id;
+  const userId = getActorUserId(req);
 
   console.log('[CHAT] Request received:', message);
   console.log('[CHAT] Chat ID:', chatId);
   console.log('[CHAT] User:', userId);
   console.log('[CHAT] Provider:', providerName);
   console.log('[CHAT] Model:', model || '(default)');
+  if (chatId && !isSafeParamId(chatId)) {
+    return res.status(400).json({ error: 'Invalid chatId' });
+  }
 
-  if (!message) {
+  const safeMessage = typeof message === 'string' ? message.trim() : '';
+  if (!safeMessage) {
     return res.status(400).json({ error: 'Message is required' });
   }
 
@@ -1286,10 +1548,10 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
     try {
       // Persist chat + user message to Supabase (non-blocking for anonymous)
-      if (isSupabaseConfigured() && userId !== 'anonymous') {
+      if (isSupabaseConfigured() && !isAnonymousUserId(userId)) {
         try {
-          await chatStore.createChat({ id: chatId, userId, title: message.substring(0, 60), provider: providerName, model });
-          await chatStore.addMessage({ chatId, userId, role: 'user', content: message });
+          await chatStore.createChat({ id: chatId, userId, title: safeMessage.substring(0, 60), provider: providerName, model });
+          await chatStore.addMessage({ chatId, userId, role: 'user', content: safeMessage });
         } catch (dbErr) {
           // If chat ownership/auth checks fail, don't continue the stream.
           if (shouldFailDbWrite(dbErr)) {
@@ -1300,12 +1562,12 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       }
 
     // Get or create Composio session for this user
-    let composioSession = composioSessions.get(userId);
+    let composioSession = getComposioSession(userId);
     if (!composioSession) {
       console.log('[COMPOSIO] Creating new session for user:', userId);
       res.write(`data: ${JSON.stringify({ type: 'status', message: 'Initializing session...' })}\n\n`);
       composioSession = await composio.create(userId);
-      composioSessions.set(userId, composioSession);
+      setComposioSession(userId, composioSession);
       console.log('[COMPOSIO] Session created with MCP URL:', composioSession.mcp.url);
 
       const mcpServers = buildMcpServers(composioSession);
@@ -1366,7 +1628,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     // Stream responses from the provider
     try {
       for await (const chunk of provider.query({
-        prompt: message,
+        prompt: safeMessage,
         chatId,
         userId,
         mcpServers,
@@ -1395,7 +1657,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         // Persist session_id on session_init
         if (chunk.type === 'system_init' || chunk.type === 'session_init') {
           const sid = chunk.session_id || chunk.sessionId;
-          if (sid && isSupabaseConfigured() && userId !== 'anonymous') {
+          if (sid && isSupabaseConfigured() && !isAnonymousUserId(userId)) {
             sessionStore.setProviderSession(chatId, providerName, sid, userId).catch(err => {
               console.error('[CHAT] Session persist error (non-fatal):', err.message);
             });
@@ -1420,7 +1682,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     }
 
     // Save assistant message to DB after stream completes + fire-and-forget embedding
-    if (assistantText && isSupabaseConfigured() && userId !== 'anonymous') {
+    if (assistantText && isSupabaseConfigured() && !isAnonymousUserId(userId)) {
       const metadata = { provider: providerName, model };
       if (toolCallsAccumulated.length > 0) metadata.tool_calls = toolCallsAccumulated;
       chatStore.addMessage({ chatId, userId, role: 'assistant', content: assistantText, metadata })
@@ -1450,18 +1712,18 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 });
 
 // Abort endpoint to stop active queries
-app.post('/api/abort', requireAuth, async (req, res) => {
+app.post('/api/abort', requireAuth, rateLimit.chat, async (req, res) => {
   const { chatId, provider: providerName = 'claude' } = req.body;
 
-  if (!chatId) {
+  if (!chatId || !isSafeParamId(chatId)) {
     return res.status(400).json({ error: 'chatId is required' });
   }
 
   console.log('[ABORT] Request to abort chatId:', chatId, 'provider:', providerName);
 
   try {
-    const userId = req.user.id;
-    if (isSupabaseConfigured() && userId !== 'anonymous') {
+    const userId = getActorUserId(req);
+    if (isSupabaseConfigured() && !isAnonymousUserId(userId)) {
       const ownership = await assertChatOwnedByUser(chatId, userId);
       if (!ownership.ok) {
         const status = ownership.code === 'forbidden' ? 403 : 404;
@@ -1470,7 +1732,7 @@ app.post('/api/abort', requireAuth, async (req, res) => {
     }
 
     const provider = getProvider(providerName);
-    const aborted = provider.abort(chatId, req.user.id);
+    const aborted = provider.abort(chatId, userId);
 
     if (aborted) {
       console.log('[ABORT] Successfully aborted chatId:', chatId);
@@ -1481,7 +1743,7 @@ app.post('/api/abort', requireAuth, async (req, res) => {
     }
   } catch (error) {
     console.error('[ABORT] Error:', error);
-    res.status(500).json({ error: error.message });
+    sendInternalError(res, error);
   }
 });
 
@@ -1489,7 +1751,7 @@ app.post('/api/abort', requireAuth, async (req, res) => {
 app.post('/api/permission-response', requireAuth, async (req, res) => {
   const { chatId, requestId, behavior, message: denyMessage } = req.body;
 
-  if (!chatId || !requestId || !behavior) {
+  if (!chatId || !isSafeParamId(chatId) || !requestId || !behavior) {
     return res.status(400).json({ error: 'chatId, requestId, and behavior are required' });
   }
 
@@ -1500,8 +1762,8 @@ app.post('/api/permission-response', requireAuth, async (req, res) => {
   console.log('[PERMISSION] Response for', requestId, ':', behavior);
 
   try {
-    const userId = req.user.id;
-    if (isSupabaseConfigured() && userId !== 'anonymous') {
+    const userId = getActorUserId(req);
+    if (isSupabaseConfigured() && !isAnonymousUserId(userId)) {
       const ownership = await assertChatOwnedByUser(chatId, userId);
       if (!ownership.ok) {
         const status = ownership.code === 'forbidden' ? 403 : 404;
@@ -1523,7 +1785,7 @@ app.post('/api/permission-response', requireAuth, async (req, res) => {
     }
   } catch (error) {
     console.error('[PERMISSION] Error:', error);
-    res.status(500).json({ error: error.message });
+    sendInternalError(res, error);
   }
 });
 
@@ -1536,7 +1798,7 @@ app.get('/api/providers', (_req, res) => {
 });
 
 // Settings: get (masked keys + mcpServers)
-app.get('/api/settings', requireAuth, (_req, res) => {
+app.get('/api/settings', requireAuth, rateLimit.settings, (_req, res) => {
   try {
     const data = readUserSettingsFile();
     res.json({
@@ -1555,12 +1817,12 @@ app.get('/api/settings', requireAuth, (_req, res) => {
     });
   } catch (err) {
     console.error('[SETTINGS] GET error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Settings: put (merge and persist; apply keys; clear Composio/Smithery caches when keys change)
-app.put('/api/settings', requireAuth, (req, res) => {
+app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
   try {
     const data = readUserSettingsFile();
     const body = req.body || {};
@@ -1698,7 +1960,7 @@ app.put('/api/settings', requireAuth, (req, res) => {
     });
   } catch (err) {
     console.error('[SETTINGS] PUT error:', err);
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -1800,7 +2062,7 @@ app.get('/api/documents', requireAuth, (_req, res) => {
       });
     res.json({ files, outputDirectory: outputDir });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -1816,7 +2078,7 @@ app.get('/api/documents/:filename', requireAuth, (req, res) => {
     }
     res.download(filePath, safeName);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
@@ -1843,34 +2105,34 @@ app.get('/api/plugins', requireAuth, (_req, res) => {
   try {
     res.json({ plugins: pluginManager.listPlugins() });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Enable a plugin
-app.post('/api/plugins/:name/enable', requireAuth, (req, res) => {
+app.post('/api/plugins/:name/enable', requireAuth, requireAdmin, (req, res) => {
   if (!pluginManager) return res.status(503).json({ error: 'Plugin system not initialized' });
   try {
     pluginManager.enablePlugin(req.params.name);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Disable a plugin
-app.post('/api/plugins/:name/disable', requireAuth, (req, res) => {
+app.post('/api/plugins/:name/disable', requireAuth, requireAdmin, (req, res) => {
   if (!pluginManager) return res.status(503).json({ error: 'Plugin system not initialized' });
   try {
     pluginManager.disablePlugin(req.params.name);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendInternalError(res, err);
   }
 });
 
 // Install a plugin from a git URL
-app.post('/api/plugins/install', requireAuth, (req, res) => {
+app.post('/api/plugins/install', requireAuth, requireAdmin, (req, res) => {
   if (!pluginManager) return res.status(503).json({ error: 'Plugin system not initialized' });
   const { url, dirName } = req.body;
   if (!url) return res.status(400).json({ error: 'Git URL is required' });
@@ -1883,7 +2145,7 @@ app.post('/api/plugins/install', requireAuth, (req, res) => {
 });
 
 // Remove an installed plugin
-app.delete('/api/plugins/:name', requireAuth, (req, res) => {
+app.delete('/api/plugins/:name', requireAuth, requireAdmin, (req, res) => {
   if (!pluginManager) return res.status(503).json({ error: 'Plugin system not initialized' });
   try {
     pluginManager.removePlugin(req.params.name);
@@ -1916,6 +2178,11 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// API 404 fallback
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+});
+
 // Serve web UI (renderer) for browser deployment (e.g. Coolify)
 const rendererPath = path.join(__dirname, '..', 'renderer');
 if (fs.existsSync(rendererPath)) {
@@ -1926,6 +2193,7 @@ if (fs.existsSync(rendererPath)) {
 await initializeProviders();
 await initializeComposioSession();
 await initializeSmitheryConnection();
+scheduleComposioSessionCleanup();
 initializeDataforseoConfig();
 await initializeBrowser();
 initializeDocuments();
@@ -1952,14 +2220,39 @@ server.on('error', (err) => {
   console.error('Server error:', err);
 });
 
-// Prevent the process from exiting
-process.on('SIGINT', async () => {
-  console.log('\nShutting down server...');
-  if (browserServer) {
-    try { await browserServer.stop(); } catch (_) {}
+async function shutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  console.log(`\n${signal} received. Shutting down server...`);
+  stopScheduler();
+
+  if (composioSessionCleanupTimer) {
+    clearInterval(composioSessionCleanupTimer);
+    composioSessionCleanupTimer = null;
   }
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
+
+  if (browserServer) {
+    try {
+      await browserServer.stop();
+    } catch (_) {
+      // ignore browser shutdown failures
+    }
+  }
+
+  await new Promise((resolve) => {
+    const timeout = setTimeout(resolve, 5000);
+    server.close(() => {
+      clearTimeout(timeout);
+      resolve();
+    });
   });
+  process.exit(0);
+}
+
+process.on('SIGINT', () => {
+  shutdown('SIGINT');
+});
+process.on('SIGTERM', () => {
+  shutdown('SIGTERM');
 });

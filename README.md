@@ -73,6 +73,36 @@ cd server && npm start
 npm start
 ```
 
+### End-to-end Testing
+
+```bash
+npm run test:e2e:smoke-matrix
+npm run test:e2e:critical-matrix
+```
+
+`test:e2e:smoke-matrix`
+- Full smoke suite (`tests/smoke.spec.js`) across Chromium, Firefox, WebKit, Mobile Chrome, and Mobile Safari.
+
+`test:e2e:critical-matrix`
+- Critical user journey suite (`tests/critical-user-journeys.spec.js`) across Chromium, Firefox, WebKit, Mobile Chrome, and Mobile Safari.
+
+`test:e2e:matrix`
+- Everything (`smoke + critical`) across the same 5 browser/device targets.
+
+`test:e2e:ci`
+- Same full matrix with retry behavior suitable for CI.
+
+CI-friendly report output is written to:
+- `output/playwright/report`
+- `output/playwright/reports/results.json`
+- `output/playwright/reports/junit.xml`
+- `output/playwright/artifacts` (videos/traces/screenshots on failures)
+
+Quick pre-merge command:
+```bash
+npm run test:e2e:critical && npm run test:e2e:smoke
+```
+
 ### 🦑 Secure Clawdbot
 
 ```bash

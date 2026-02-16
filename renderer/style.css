@@ -38,6 +38,25 @@ body {
   display: none !important;
 }
 
+.app-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  max-width: min(720px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fee2e2;
+  color: #7f1d1d;
+  border: 1px solid #fca5a5;
+  box-shadow: var(--shadow-soft);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+}
+
 .backend-banner {
   position: fixed;
   top: 0;
@@ -2825,6 +2844,45 @@ body {
   .sidebar.open {
     transform: translateX(0);
   }
+
+  .left-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    width: 140px;
+    min-width: 0;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .left-sidebar:not(.collapsed) {
+    transform: translateX(0);
+  }
+
+  .left-sidebar.collapsed {
+    min-width: 0;
+    width: 0;
+    border-right: none;
+    transform: translateX(-100%);
+  }
+
+  .left-sidebar.collapsed .left-sidebar-header,
+  .left-sidebar.collapsed .chat-history-list,
+  .left-sidebar.collapsed .left-sidebar-footer,
+  .left-sidebar.collapsed .search-container,
+  .left-sidebar.collapsed .search-results {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .left-sidebar-expand-btn.visible {
+    display: flex;
+    left: 0;
+    transform: translateY(-50%);
+  }
 }
 
 /* ==================== AUTH VIEW ==================== */
@@ -3494,10 +3552,44 @@ body {
 
 /* Error state */
 .db-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   padding: 20px;
   text-align: center;
   color: #b91c1c;
   font-size: 13px;
+}
+
+.db-error-message {
+  color: #b91c1c;
+}
+
+.db-error-cell {
+  text-align: center;
+  color: #b91c1c;
+  font-size: 13px;
+  padding: 20px;
+}
+
+.db-error-cell .db-error-message {
+  margin-bottom: 8px;
+}
+
+.db-error-retry {
+  padding: 5px 10px;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  background: #fff;
+  color: #7f1d1d;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.db-error-retry:hover {
+  background: #fff1f2;
 }
 
 /* ==================== REPORTS VIEW ==================== */
