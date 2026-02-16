@@ -176,8 +176,9 @@ async function run() {
     });
   }
 
-  if (await page.locator('#backendBanner').count()) {
-    const bannerText = await page.locator('#backendBanner strong').textContent();
+  const backendBanner = page.locator('#backendBanner');
+  if ((await backendBanner.count()) && await backendBanner.isVisible()) {
+    const bannerText = await backendBanner.locator('strong').textContent();
     if (bannerText) {
       issues.push({
         severity: 'medium',

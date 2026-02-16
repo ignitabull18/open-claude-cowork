@@ -228,7 +228,7 @@ async function init() {
   const banner = document.getElementById('backendBanner');
   const dismissBtn = document.getElementById('backendBannerDismiss');
   if (banner && window.electronAPI && typeof window.electronAPI.checkBackend === 'function') {
-    const ok = await window.electronAPI.checkBackend();
+    const ok = await checkBackendWithRetry(10, 500);
     if (!ok) banner.classList.remove('hidden');
     if (dismissBtn) dismissBtn.addEventListener('click', () => banner.classList.add('hidden'));
   }
@@ -352,16 +352,20 @@ function setupAuthListeners() {
   });
 
   // Skip auth
-  if (authSkipBtn) {
-    authSkipBtn.addEventListener('click', () => {
-      if (authView) authView.classList.add('hidden');
-      leftSidebar.classList.remove('hidden');
-      loadAllChats();
-      renderChatHistory();
-      showView('home');
-      homeInput.focus();
-    });
-  }
+if (authSkipBtn) {
+  authSkipBtn.addEventListener('click', () => {
+    isAuthEnabled = false;
+    if (window.electronAPI?.setAuthToken) {
+      window.electronAPI.setAuthToken(null);
+    }
+    if (authView) authView.classList.add('hidden');
+    leftSidebar.classList.remove('hidden');
+    loadAllChats();
+    renderChatHistory();
+    showView('home');
+    homeInput.focus();
+  });
+}
 
   // Sign out
   if (signoutSidebarBtn) {
@@ -487,6 +491,26 @@ function apiBase() {
 // Helper: check if we should use API (Supabase) for persistence
 function useApi() {
   return isAuthEnabled && window.appAuth && window.appAuth.isAuthenticated();
+}
+
+function shouldShowAuthRequiredUnavailable() {
+  return isAuthEnabled && !useApi();
+}
+
+async function checkBackendWithRetry(retries = 8, delayMs = 500) {
+  if (!window.electronAPI || typeof window.electronAPI.checkBackend !== 'function') return false;
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    try {
+      const ok = await window.electronAPI.checkBackend();
+      if (ok) return true;
+    } catch (_) {
+      // swallow and retry
+    }
+    if (attempt < retries - 1) {
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  return false;
 }
 
 // Save current chat state
@@ -2468,6 +2492,11 @@ async function handleSendMessage(e) {
       }
       }
     } catch (readerError) {
+      if (readerError?.name === 'AbortError' || readerError?.message?.includes('aborted') || readerError?.message?.includes('abort')) {
+        clearInterval(heartbeatChecker);
+        return;
+      }
+
       console.error('[Chat] Reader error:', readerError);
       clearInterval(heartbeatChecker);
       throw readerError; // Re-throw to outer catch
@@ -3816,7 +3845,7 @@ function initReportsView() {
   }
   // Show unavailable message when not authenticated
   const unavailable = document.getElementById('reportsUnavailable');
-  if (unavailable) unavailable.classList.toggle('hidden', useApi());
+  if (unavailable) unavailable.classList.toggle('hidden', !shouldShowAuthRequiredUnavailable());
   showReportsListView();
 }
 
@@ -4177,7 +4206,7 @@ function initJobsView() {
   }
   // Show unavailable message when not authenticated
   const unavailable = document.getElementById('jobsUnavailable');
-  if (unavailable) unavailable.classList.toggle('hidden', useApi());
+  if (unavailable) unavailable.classList.toggle('hidden', !shouldShowAuthRequiredUnavailable());
   loadJobs();
 }
 
@@ -4832,16 +4861,19 @@ function initVaultView() {
   if (vaultInitialized) return;
   vaultInitialized = true;
   setupVaultEventListeners();
-  const hasSupabase = useApi();
-  if (!hasSupabase) {
-    if (vaultContent) vaultContent.classList.add('hidden');
-    if (vaultUnavailable) vaultUnavailable.classList.remove('hidden');
+
+  const showUnavailable = shouldShowAuthRequiredUnavailable();
+  if (vaultUnavailable) vaultUnavailable.classList.toggle('hidden', !showUnavailable);
+
+  if (showUnavailable) {
+    if (vaultContent) vaultContent.classList.remove('hidden');
     return;
   }
+
   if (vaultContent) vaultContent.classList.remove('hidden');
-  if (vaultUnavailable) vaultUnavailable.classList.add('hidden');
   loadVaultContents();
 }
+
 
 function setupVaultEventListeners() {
   if (vaultNewFolderBtn) vaultNewFolderBtn.addEventListener('click', promptNewFolder);
