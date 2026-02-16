@@ -131,5 +131,5 @@ Separate Node.js app (ESM) with its own `package.json` and dependency tree. Entr
 
 ## Git Workflow Rules
 
-- Push only to your own branch remote (`origin`).
-- Do not push to `upstream`/upstream branches unless explicitly requested.
+- Push only to your current feature branch on `origin`.
+- Do not push to `upstream` or protected `origin` branches (`main`, `master`, etc.) unless explicitly requested.

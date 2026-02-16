@@ -279,7 +279,7 @@ describe('report-store.js', () => {
       ]);
 
       const resultData = { rows: [{ day: '2025-01-01', count: 5 }] };
-      await updateReportResult('r-1', resultData);
+      await updateReportResult('r-1', 'user-1', resultData);
 
       // Verify by reading back
       const report = await getSavedReport('r-1', 'user-1');

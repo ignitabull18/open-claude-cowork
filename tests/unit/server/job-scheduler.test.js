@@ -409,7 +409,7 @@ describe('job-scheduler', () => {
       expect(mockExecuteCustomQuery).toHaveBeenCalledWith('u1', {
         query: 'SELECT 1',
       });
-      expect(mockUpdateReportResult).toHaveBeenCalledWith(reportId, [
+      expect(mockUpdateReportResult).toHaveBeenCalledWith('rpt-42', 'u1', [
         { count: 42 },
       ]);
       // Execution marked success
@@ -457,6 +457,7 @@ describe('job-scheduler', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
+        text: vi.fn().mockResolvedValue('ok'),
       });
       vi.stubGlobal('fetch', mockFetch);
 
@@ -482,13 +483,14 @@ describe('job-scheduler', () => {
       await triggerJob('job-wh', 'u1');
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.any(URL),
+        expect.anything(),
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ event: 'test' }),
+          signal: expect.any(AbortSignal),
         }
       );
       expect(mockFetch.mock.calls[0][0].toString()).toBe('https://example.com/hook');
@@ -497,7 +499,7 @@ describe('job-scheduler', () => {
         'exec-wh',
         expect.objectContaining({
           status: 'success',
-          result: { status: 200, statusText: 'OK' },
+          result: { status: 200, statusText: 'OK', body: 'ok' },
         })
       );
 
@@ -509,6 +511,7 @@ describe('job-scheduler', () => {
         ok: false,
         status: 500,
         statusText: 'Internal Server Error',
+        text: vi.fn().mockResolvedValue('temporarily unavailable'),
       });
       vi.stubGlobal('fetch', mockFetch);
 
