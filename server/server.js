@@ -327,6 +327,11 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// Public frontend config endpoint is intentionally available before strict CORS middleware.
+app.get('/api/config', (_req, res) => {
+  res.json(getPublicConfig());
+});
+
 app.get('/favicon.ico', (_req, res) => {
   res.status(204).send();
 });
@@ -578,25 +583,32 @@ function buildMcpServers(composioSession) {
 }
 
 // Middleware
-app.use(cors({
+const corsMiddleware = cors({
   origin: (origin, callback) => {
     if (isOriginAllowed(origin)) {
       return callback(null, true);
     }
-    return callback(new Error('Not allowed by CORS policy'));
+    // Don't throw to avoid returning HTTP 500 for browser requests to blocked origins.
+    return callback(null, false);
   },
   allowedHeaders: ['Content-Type', 'Authorization', 'x-anon-session-id'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
-}));
+});
+
+app.use('/api', (req, res, next) => {
+  const origin = req.headers?.origin;
+  const host = req.hostname;
+  const requestOriginHttp = origin ? `https://${host}` : null;
+  const requestOriginHttpAlt = origin ? `http://${host}` : null;
+  if (!origin || (requestOriginHttp && requestOriginHttp === origin) || (requestOriginHttpAlt && requestOriginHttpAlt === origin) || isOriginAllowed(origin)) {
+    return next();
+  }
+  return corsMiddleware(req, res, next);
+});
 app.use(express.json());
 
 // Helper: check if Supabase is configured
 const isSupabaseConfigured = () => !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-// ==================== SUPABASE CONFIG ENDPOINT ====================
-app.get('/api/config', (_req, res) => {
-  res.json(getPublicConfig());
-});
 
 // ==================== CHAT CRUD ENDPOINTS ====================
 app.get('/api/chats', requireAuth, rateLimit.reports, async (req, res) => {
