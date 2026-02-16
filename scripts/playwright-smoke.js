@@ -318,13 +318,25 @@ async function run() {
 
     const hasSettings = view.name === 'settings';
     if (hasSettings) {
-      const hasProviderDropdown = await page.locator('.settings-view .provider-selector').count();
-      if (!hasProviderDropdown) {
+      const hasSectionTitle = await page.locator('#settingsView .settings-section-title').count();
+      if (!hasSectionTitle) {
         issues.push({
           severity: 'low',
           area: 'settings',
           issue: 'Settings view loaded but core controls missing',
-          evidence: 'settings provider selector not found'
+          evidence: 'settings-section-title not found'
+        });
+      }
+
+      const hasExpectedControls = await page.locator('#settingsSaveKeysBtn').isVisible().catch(() => false) ||
+        await page.locator('#settingsAddMcpBtn').isVisible().catch(() => false) ||
+        await page.locator('#settingsSaveBrowserBtn').isVisible().catch(() => false);
+      if (!hasExpectedControls) {
+        issues.push({
+          severity: 'low',
+          area: 'settings',
+          issue: 'Settings controls not interactive',
+          evidence: 'No known settings action button found'
         });
       }
     }
