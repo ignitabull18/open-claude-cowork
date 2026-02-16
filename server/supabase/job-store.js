@@ -102,6 +102,7 @@ export async function updateJob(jobId, userId, updates) {
     nextRunAt: updates.nextRunAt ?? updates.next_run_at,
     runCount: updates.runCount ?? updates.run_count,
     lastError: updates.lastError ?? updates.last_error,
+    folderId: updates.folderId ?? updates.folder_id
   };
 
   const payload = {};
@@ -118,6 +119,7 @@ export async function updateJob(jobId, userId, updates) {
   if (normalized.nextRunAt !== undefined) payload.next_run_at = normalized.nextRunAt;
   if (normalized.runCount !== undefined) payload.run_count = normalized.runCount;
   if (normalized.lastError !== undefined) payload.last_error = normalized.lastError;
+  if (normalized.folderId !== undefined) payload.folder_id = normalized.folderId || null;
 
   const { data, error } = await db()
     .from('scheduled_jobs')

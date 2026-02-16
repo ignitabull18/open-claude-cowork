@@ -39,7 +39,73 @@
     <button type="button" id="backendBannerDismiss">Dismiss</button>
   </div>
   <div class="app-container">
-    <!-- Left Sidebar - Chat History -->
+    <!-- Navigation Rail - Core Feature Switching -->
+    <nav class="nav-rail">
+      <div class="nav-rail-top">
+        <button class="nav-rail-item active" data-view="home" title="Home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+        </button>
+        <button class="nav-rail-item" data-view="chat" title="Chats">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </button>
+        <div class="nav-rail-divider"></div>
+        <button class="nav-rail-item" data-view="tasks" title="Tasks">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="8" y1="9" x2="16" y2="9"></line>
+            <line x1="8" y1="13" x2="14" y2="13"></line>
+            <line x1="8" y1="17" x2="12" y2="17"></line>
+          </svg>
+        </button>
+        <button class="nav-rail-item" data-view="vault" title="Assets Vault">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </button>
+        <button class="nav-rail-item" data-view="reports" title="Reports">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+        </button>
+        <button class="nav-rail-item" data-view="jobs" title="Workflows">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </button>
+        <button class="nav-rail-item hidden" id="navDbBtn" data-view="database" title="Database Explorer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="nav-rail-bottom">
+        <button class="nav-rail-item" data-view="settings" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+        <button class="nav-rail-item hidden" id="navSignOutBtn" title="Sign Out">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Left Sidebar - Side Panel (e.g. Chat History) -->
     <aside class="left-sidebar" id="leftSidebar">
       <div class="left-sidebar-header">
         <button class="new-chat-sidebar-btn" onclick="startNewChat()" title="New chat">
@@ -59,64 +125,34 @@
         <input type="text" class="search-input" id="searchInput" placeholder="Search messages..." autocomplete="off" />
       </div>
       <div class="search-results hidden" id="searchResults"></div>
+      
+      <!-- Folders Section -->
+      <div class="sidebar-folders-section">
+        <div class="folders-header">
+          <span class="folders-title" id="sidebarFoldersTitle">Folders</span>
+          <button class="new-folder-btn" id="newFolderBtn" title="New Folder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="chat-folders-list" id="chatFoldersList">
+          <!-- Folders will be added here -->
+        </div>
+        <div class="workflow-folders-list hidden" id="workflowFoldersList">
+          <!-- Workflow Folders will be added here -->
+        </div>
+        <div class="report-folders-list hidden" id="reportFoldersList">
+          <!-- Report Folders will be added here -->
+        </div>
+      </div>
+
       <div class="chat-history-list" id="chatHistoryList">
         <!-- Chat history items will be added here -->
       </div>
       <div class="left-sidebar-footer">
         <span class="user-email-label" id="userEmailLabel"></span>
-        <button type="button" class="signout-sidebar-btn hidden" id="signoutSidebarBtn" title="Sign out">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-            <polyline points="16 17 21 12 16 7"></polyline>
-            <line x1="21" y1="12" x2="9" y2="12"></line>
-          </svg>
-          <span>Sign Out</span>
-        </button>
-        <button type="button" class="reports-sidebar-btn" id="reportsSidebarBtn" title="Reports">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="20" x2="18" y2="10"></line>
-            <line x1="12" y1="20" x2="12" y2="4"></line>
-            <line x1="6" y1="20" x2="6" y2="14"></line>
-          </svg>
-          <span>Reports</span>
-        </button>
-        <button type="button" class="jobs-sidebar-btn" id="jobsSidebarBtn" title="Jobs">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
-          </svg>
-          <span>Jobs</span>
-        </button>
-        <button type="button" class="sidebar-footer-btn" id="tasksSidebarBtn" title="Tasks">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="8" y1="9" x2="16" y2="9"></line>
-            <line x1="8" y1="13" x2="14" y2="13"></line>
-            <line x1="8" y1="17" x2="12" y2="17"></line>
-          </svg>
-          <span>Tasks</span>
-        </button>
-        <button type="button" class="vault-sidebar-btn" id="vaultSidebarBtn" title="Assets Vault">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
-          <span>Vault</span>
-        </button>
-        <button type="button" class="db-sidebar-btn hidden" id="dbSidebarBtn" title="Database">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
-          </svg>
-          <span>Database</span>
-        </button>
-        <button type="button" class="settings-sidebar-btn" id="settingsSidebarBtn" title="Settings">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-          <span>Settings</span>
-        </button>
       </div>
     </aside>
 
@@ -165,6 +201,46 @@
         <div class="greeting">
           <h1 class="greeting-text">Open Claude Cowork</h1>
           <p class="tagline">Powered by Claude Code and Composio</p>
+        </div>
+      </div>
+
+      <div class="quick-actions-grid">
+        <div class="quick-action-card" onclick="showView('tasks')">
+          <div class="quick-action-icon tasks">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="8" y1="9" x2="16" y2="9"></line>
+              <line x1="8" y1="13" x2="14" y2="13"></line>
+            </svg>
+          </div>
+          <div class="quick-action-info">
+            <div class="quick-action-title">Manage Tasks</div>
+            <div class="quick-action-desc">Kanban board & planner</div>
+          </div>
+        </div>
+        <div class="quick-action-card" onclick="showView('vault')">
+          <div class="quick-action-icon vault">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
+          <div class="quick-action-info">
+            <div class="quick-action-title">Assets Vault</div>
+            <div class="quick-action-desc">Files & generated docs</div>
+          </div>
+        </div>
+        <div class="quick-action-card" onclick="showView('reports')">
+          <div class="quick-action-icon reports">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="20" x2="18" y2="10"></line>
+              <line x1="12" y1="20" x2="12" y2="4"></line>
+              <line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+          </div>
+          <div class="quick-action-info">
+            <div class="quick-action-title">Usage Reports</div>
+            <div class="quick-action-desc">Analytics & insights</div>
+          </div>
         </div>
       </div>
 
@@ -402,6 +478,7 @@
         <div class="sidebar-header">
           <div class="sidebar-tabs" id="sidebarTabs">
             <button class="sidebar-tab active" data-tab="progress" id="tabProgress">Progress</button>
+            <button class="sidebar-tab" data-tab="context" id="tabContext">Context</button>
             <button class="sidebar-tab" data-tab="artifact" id="tabArtifact" disabled>Artifact</button>
           </div>
           <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar">
@@ -413,41 +490,188 @@
 
         <!-- Progress Panel -->
         <div class="sidebar-panel active" id="progressPanel">
-          <!-- Steps/Todos Section -->
-          <div class="sidebar-section">
-            <div class="section-header" id="stepsHeader">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-              <span id="stepsCount">0 steps</span>
+          <!-- ... existing content ... -->
+        </div>
+
+        <!-- Context Panel -->
+        <div class="sidebar-panel" id="contextPanel">
+          <div class="context-usage-header">
+            <div class="usage-info">
+              <span class="usage-label">Context Usage</span>
+              <span id="contextUsageValue" class="usage-value">0 / 200k tokens</span>
             </div>
-            <div class="steps-list" id="stepsList">
-              <div class="empty-state" id="emptySteps">No active tasks</div>
+            <div class="usage-meter-container">
+              <div id="contextUsageBar" class="usage-meter-bar" style="width: 0%"></div>
             </div>
+            <p class="context-hint">Estimated token usage for the current project context.</p>
           </div>
 
-          <!-- Sub-Agents Section -->
-          <div class="sidebar-section subagents-section" id="subagentsSection" style="display:none;">
-            <div class="section-header" id="subagentsHeader">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"></path>
-              </svg>
-              <span id="subagentsCount">0 agents</span>
-            </div>
-            <div class="subagents-list" id="subagentsList"></div>
-          </div>
-
-          <!-- Tool Calls Section -->
           <div class="sidebar-section">
             <div class="section-header">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
               </svg>
-              <span>Tool Calls</span>
+              <span>Project / Entity</span>
             </div>
-            <div class="tool-calls-list" id="toolCallsList">
-              <div class="empty-state" id="emptyTools">No tool calls yet</div>
+            <div class="context-project-info">
+              <input type="text" id="contextProjectName" class="context-input" placeholder="Project name (e.g. My Website)" />
+              <textarea id="contextProjectDesc" class="context-textarea" rows="3" placeholder="High-level goal or brand identity..."></textarea>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+              </svg>
+              <span>Database Sources</span>
+            </div>
+            <div class="context-db-sources">
+              <p class="context-hint">Select tables to include in this project's context.</p>
+              <div id="contextTableList" class="context-list">
+                <!-- Tables with checkboxes will be added here -->
+                <div class="empty-state">No tables available</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+              <span>Google Drive</span>
+            </div>
+            <div class="context-gdrive-sources">
+              <p class="context-hint">Pin documents or folders as context.</p>
+              <div id="contextGDriveList" class="context-list">
+                <div class="empty-state">No files pinned</div>
+              </div>
+              <button class="context-add-btn" id="contextPinGDriveBtn">+ Pin Drive File</button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22.54 6.42a2.78 2.82 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.82 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.82 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.82 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path>
+                <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon>
+              </svg>
+              <span>YouTube Videos</span>
+            </div>
+            <div class="context-youtube-sources">
+              <p class="context-hint">Transcript & metadata context.</p>
+              <div id="contextYouTubeList" class="context-list">
+                <div class="empty-state">No videos pinned</div>
+              </div>
+              <button class="context-add-btn" id="contextPinYouTubeBtn">+ Pin YouTube URL</button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+              </svg>
+              <span>Notion Workspace</span>
+            </div>
+            <div class="context-notion-sources">
+              <p class="context-hint">Pin pages or databases as project context.</p>
+              <div id="contextNotionList" class="context-list">
+                <div class="empty-state">No pages pinned</div>
+              </div>
+              <button class="context-add-btn" id="contextPinNotionBtn">+ Pin Notion Page</button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+              </svg>
+              <span>ClickUp Workspace</span>
+            </div>
+            <div class="context-clickup-sources">
+              <p class="context-hint">Sync specific lists or folders.</p>
+              <div id="contextClickUpList" class="context-list">
+                <div class="empty-state">No lists pinned</div>
+              </div>
+              <button class="context-add-btn" id="contextPinClickUpBtn">+ Pin ClickUp List</button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+              </svg>
+              <span>Web Sources</span>
+            </div>
+            <div class="context-web-sources">
+              <p class="context-hint">Links to monitor or use as workflow context.</p>
+              <div id="contextWebList" class="context-list">
+                <!-- Added URLs will appear here -->
+                <div class="empty-state">No URLs added</div>
+              </div>
+              <div class="context-input-group">
+                <input type="url" id="contextWebInput" class="context-input" placeholder="https://example.com..." />
+                <button class="context-icon-btn" id="contextAddWebBtn" title="Add URL">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <span>Pinned Assets</span>
+            </div>
+            <div class="context-pinned-assets">
+              <p class="context-hint">Images, videos, or documents from your Vault.</p>
+              <div id="contextPinnedAssets" class="context-list">
+                <!-- Pinned assets will be added here -->
+                <div class="empty-state">No assets pinned</div>
+              </div>
+              <button class="context-add-btn" id="contextPinAssetBtn">+ Pin from Vault</button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              <span>Instructions</span>
+            </div>
+            <div class="context-instructions">
+              <p class="context-hint">These instructions are automatically appended to your chats.</p>
+              <textarea id="contextActiveInstructions" class="context-textarea" rows="6" placeholder="Specific rules for this project..."></textarea>
+              <button class="context-save-btn" id="saveContextBtn">Update Context</button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span>Active Tools</span>
+            </div>
+            <div class="context-tools-list" id="contextToolsList">
+              <div class="empty-state">No specific tools pinned</div>
             </div>
           </div>
         </div>
@@ -1003,29 +1227,29 @@
               <polyline points="15 18 9 12 15 6"></polyline>
             </svg>
           </button>
-          <h1 class="jobs-title">Scheduled Jobs</h1>
-          <button type="button" class="jobs-new-btn" id="jobsNewBtn">New Job</button>
+          <h1 class="jobs-title">Workflows</h1>
+          <button type="button" class="jobs-new-btn" id="jobsNewBtn">New Workflow</button>
         </header>
         <div class="jobs-content">
           <div class="jobs-unavailable hidden" id="jobsUnavailable">
-            <p>Connect Supabase to use Scheduled Jobs</p>
+            <p>Connect Supabase to use Workflows</p>
           </div>
           <div class="jobs-list" id="jobsList">
-            <div class="jobs-empty-state" id="jobsEmpty">No scheduled jobs. Click 'New Job' to get started.</div>
+            <div class="jobs-empty-state" id="jobsEmpty">No workflows yet. Click 'New Workflow' to get started.</div>
           </div>
           <!-- Job Create/Edit Form -->
           <div class="jobs-form hidden" id="jobsForm">
-            <h3 class="jobs-form-title" id="jobsFormTitle">New Job</h3>
+            <h3 class="jobs-form-title" id="jobsFormTitle">New Workflow</h3>
             <div class="settings-field">
               <label for="jobName">Name</label>
-              <input type="text" id="jobName" class="settings-input" placeholder="My scheduled job" />
+              <input type="text" id="jobName" class="settings-input" placeholder="My automation workflow" />
             </div>
             <div class="settings-field">
               <label for="jobDescription">Description</label>
               <input type="text" id="jobDescription" class="settings-input" placeholder="Optional description" />
             </div>
             <div class="settings-field">
-              <label for="jobType">Job Type</label>
+              <label for="jobType">Workflow Type</label>
               <select id="jobType" class="settings-select">
                 <option value="one_time">One-time</option>
                 <option value="recurring">Recurring</option>
@@ -1133,6 +1357,7 @@
             <option value="upload">Uploads</option>
             <option value="chat">Chat</option>
             <option value="ai_generated">AI Generated</option>
+            <option value="generated_doc">Generated Documents</option>
           </select>
           <select class="vault-sort-select" id="vaultSortSelect">
             <option value="created_at:desc">Newest</option>
@@ -1286,6 +1511,28 @@
       <div class="permission-dialog-actions">
         <button type="button" class="permission-allow-btn" id="permissionAllowBtn">Allow</button>
         <button type="button" class="permission-deny-btn" id="permissionDenyBtn">Deny</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Command Palette Modal -->
+  <div class="command-palette-overlay hidden" id="commandPalette">
+    <div class="command-palette">
+      <div class="command-palette-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="commandPaletteInput" placeholder="Search chats, tasks, assets, or commands... (Type '/' for actions)" autocomplete="off" />
+        <div class="command-palette-hint">Esc to close</div>
+      </div>
+      <div class="command-palette-results" id="commandPaletteResults">
+        <!-- Results will be grouped by category -->
+      </div>
+      <div class="command-palette-footer">
+        <div class="footer-item"><span>&uarr;&darr;</span> to navigate</div>
+        <div class="footer-item"><span>Enter</span> to select</div>
+        <div class="footer-item"><span>/</span> for commands</div>
       </div>
     </div>
   </div>

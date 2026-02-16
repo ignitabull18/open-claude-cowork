@@ -85,6 +85,16 @@
       });
     },
 
+    updateChat: async function (chatId, data) {
+      const response = await fetch(apiUrl('/api/chats/' + chatId), {
+        method: 'PATCH',
+        headers: buildHeaders(),
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+
     getProviders: async function () {
       try {
         const response = await fetch(apiUrl('/api/providers'));
@@ -473,6 +483,43 @@
     },
     getVaultStats: async function () {
       const response = await fetch(apiUrl('/api/vault/stats'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+
+    // ==================== FOLDERS ====================
+    getFolders: async function (type, parentId) {
+      var qs = new URLSearchParams();
+      if (type) qs.set('type', type);
+      if (parentId) qs.set('parentId', parentId);
+      var url = apiUrl('/api/folders?' + qs.toString());
+      const response = await fetch(url, { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    createFolder: async function (name, type, parentId) {
+      const response = await fetch(apiUrl('/api/folders'), {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify({ name: name, type: type, parentId: parentId })
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    renameFolder: async function (folderId, name) {
+      const response = await fetch(apiUrl('/api/folders/' + folderId), {
+        method: 'PATCH',
+        headers: buildHeaders(),
+        body: JSON.stringify({ name: name })
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
+    deleteFolder: async function (folderId) {
+      const response = await fetch(apiUrl('/api/folders/' + folderId), {
+        method: 'DELETE',
+        headers: buildHeaders()
+      });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return await response.json();
     },

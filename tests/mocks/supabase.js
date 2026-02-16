@@ -41,6 +41,8 @@ function applyFilters(rows, filters) {
   for (const { column, op, value } of filters) {
     if (op === 'eq') {
       result = result.filter(r => r[column] === value);
+    } else if (op === 'is_null') {
+      result = result.filter(r => r[column] === null || r[column] === undefined);
     } else if (op === 'not.eq') {
       result = result.filter(r => r[column] !== value);
     } else if (op === 'in') {
@@ -77,6 +79,14 @@ function createQueryBuilder(tableName) {
     },
     eq(column, value) {
       filters.push({ column, op: 'eq', value });
+      return builder;
+    },
+    is(column, value) {
+      if (value === null) {
+        filters.push({ column, op: 'is_null', value: null });
+      } else {
+        filters.push({ column, op: 'eq', value });
+      }
       return builder;
     },
     not(column, op, value) {
@@ -172,13 +182,8 @@ function createQueryBuilder(tableName) {
     }
 
     if (operation === 'delete') {
-      const before = rows.length;
-      const remaining = rows.filter(r => {
-        return !filters.every(f => {
-          if (f.op === 'eq') return r[f.column] === f.value;
-          return true;
-        });
-      });
+      const filtered = applyFilters(rows, filters);
+      const remaining = rows.filter(r => !filtered.includes(r));
       tables.set(tableName, remaining);
       return { data: null, error: null };
     }

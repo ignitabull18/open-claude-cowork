@@ -118,7 +118,7 @@ test.describe('Critical User Journeys', () => {
 
     await page.locator('#jobsSidebarBtn').click();
     await expect(page.locator('#jobsView')).toBeVisible();
-    await expect(page.locator('.jobs-title')).toContainText('Scheduled Jobs');
+    await expect(page.locator('.jobs-title')).toContainText('Workflows');
 
     await page.locator('#tasksSidebarBtn').click();
     await expect(page.locator('#tasksView')).toBeVisible();

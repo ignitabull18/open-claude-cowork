@@ -421,7 +421,7 @@ test.describe('Open Claude Cowork - Smoke Tests', () => {
   test('should open Jobs view', async ({ page }) => {
     await page.locator('#jobsSidebarBtn').click();
     await expect(page.locator('#jobsView')).toBeVisible();
-    await expect(page.locator('.jobs-title')).toContainText('Scheduled Jobs');
+    await expect(page.locator('.jobs-title')).toContainText('Workflows');
   });
 
   test('should open Tasks view', async ({ page }) => {

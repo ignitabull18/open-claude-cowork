@@ -107,6 +107,7 @@ export async function updateSavedReport(reportId, userId, updates) {
   if (updates.name !== undefined) payload.name = updates.name;
   if (updates.description !== undefined) payload.description = updates.description;
   if (updates.reportConfig !== undefined) payload.report_config = updates.reportConfig;
+  if (updates.folder_id !== undefined) payload.folder_id = updates.folder_id || null;
 
   const { data, error } = await db()
     .from('saved_reports')

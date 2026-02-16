@@ -20,11 +20,20 @@ import * as reportStore from './supabase/report-store.js';
 import * as jobStore from './supabase/job-store.js';
 import * as taskStore from './supabase/task-store.js';
 import * as vaultStore from './supabase/vault-store.js';
+import * as folderStore from './supabase/folder-store.js';
 import { startScheduler, triggerJob, stopScheduler } from './job-scheduler.js';
 import { BrowserServer, createBrowserMcpServer } from './browser/index.js';
 import { createDocumentMcpServer } from './documents/index.js';
 import { PluginManager } from './plugins/plugin-manager.js';
 import crypto from 'crypto';
+import {
+  readUserSettingsFile,
+  getUserSettingsPath,
+  clearUserSettingsCache,
+  cloneSettings,
+  isSecureMode
+} from './utils/settings-utils.js';
+import { buildSystemPrompt, fetchDirectExternalContext } from './utils/prompt-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,105 +62,7 @@ const allowNullOrigin =
     ? process.env.ALLOW_NULL_ORIGIN === 'true'
     : process.env.ALLOW_NULL_ORIGIN !== 'false';
 
-const userSettingsCache = { value: null, loadedAt: 0 };
 let composioSessionCleanupTimer = null;
-
-function isSecureMode() {
-  return process.env.NODE_ENV === 'production' || process.env.SETTINGS_STRICT_MODE === 'true';
-}
-
-function cloneSettings(data) {
-  return JSON.parse(JSON.stringify(data || {}));
-}
-
-function getUserSettingsPath() {
-  const resolved = path.resolve(USER_SETTINGS_PATH);
-  const baseDir = path.resolve(path.dirname(resolved));
-  if (isSecureMode() && !resolved.startsWith(baseDir + path.sep)) {
-    throw new Error('Invalid user settings path');
-  }
-  return resolved;
-}
-
-function readUserSettingsFromDisk() {
-  const settingsPath = getUserSettingsPath();
-  let data = { apiKeys: {}, mcpServers: [] };
-  try {
-    if (fs.existsSync(settingsPath)) {
-      const raw = fs.readFileSync(settingsPath, 'utf8');
-      data = JSON.parse(raw);
-    }
-  } catch (_) {
-    // ignore and fall back to defaults
-  }
-
-  if (!data.apiKeys || typeof data.apiKeys !== 'object') data.apiKeys = {};
-  if (!Array.isArray(data.mcpServers)) data.mcpServers = [];
-
-  return normalizeUserSettings(data);
-}
-
-function normalizeUserSettings(raw) {
-  const baseOutputDir = path.join(os.homedir(), 'Documents', 'generated');
-  const input = raw && typeof raw === 'object' ? raw : {};
-  const apiKeys = input.apiKeys && typeof input.apiKeys === 'object' ? input.apiKeys : {};
-
-  const permissions = input.permissions && typeof input.permissions === 'object' ? input.permissions : {};
-  const browser = input.browser && typeof input.browser === 'object' ? input.browser : {};
-  const documents = input.documents && typeof input.documents === 'object' ? input.documents : {};
-  const instructions = input.instructions && typeof input.instructions === 'object' ? input.instructions : {};
-  const plugins = input.plugins && typeof input.plugins === 'object' ? input.plugins : {};
-
-  return {
-    apiKeys: {
-      anthropic: typeof apiKeys.anthropic === 'string' ? apiKeys.anthropic : '',
-      composio: typeof apiKeys.composio === 'string' ? apiKeys.composio : '',
-      smithery: typeof apiKeys.smithery === 'string' ? apiKeys.smithery : '',
-      dataforseoUsername: typeof apiKeys.dataforseoUsername === 'string' ? apiKeys.dataforseoUsername : '',
-      dataforseoPassword: typeof apiKeys.dataforseoPassword === 'string' ? apiKeys.dataforseoPassword : ''
-    },
-    mcpServers: Array.isArray(input.mcpServers) ? input.mcpServers : [],
-    browser: {
-      enabled: !!browser.enabled,
-      mode: browser.mode || 'clawd',
-      headless: !!browser.headless,
-      backend: browser.backend || 'builtin',
-      cdpPort: Number(browser.cdpPort) || 9222
-    },
-    instructions: {
-      global: typeof instructions.global === 'string' ? instructions.global : '',
-      folders: Array.isArray(instructions.folders) ? instructions.folders : []
-    },
-    permissions: {
-      mode: typeof permissions.mode === 'string' ? permissions.mode : 'bypassPermissions',
-      allowedDirectories: Array.isArray(permissions.allowedDirectories) ? permissions.allowedDirectories : [],
-      fileDeleteConfirmation: permissions.fileDeleteConfirmation !== false
-    },
-    documents: {
-      outputDirectory: typeof documents.outputDirectory === 'string' ? documents.outputDirectory : baseOutputDir
-    },
-    plugins: {
-      enabled: Array.isArray(plugins.enabled) ? plugins.enabled : [],
-      installed: Array.isArray(plugins.installed) ? plugins.installed : []
-    }
-  };
-}
-
-function clearUserSettingsCache() {
-  userSettingsCache.value = null;
-  userSettingsCache.loadedAt = 0;
-}
-
-function readUserSettingsFile({ force = false } = {}) {
-  const now = Date.now();
-  if (!force && userSettingsCache.value && now - userSettingsCache.loadedAt < USER_SETTINGS_CACHE_TTL_MS) {
-    return cloneSettings(userSettingsCache.value);
-  }
-  const normalized = readUserSettingsFromDisk();
-  userSettingsCache.value = normalized;
-  userSettingsCache.loadedAt = now;
-  return cloneSettings(normalized);
-}
 
 function createRateLimiter({ windowMs, maxRequests }) {
   const buckets = new Map();
@@ -540,30 +451,6 @@ function initializeDataforseoConfig() {
 }
 
 /**
- * Build a system prompt appendix from global + folder instructions.
- * Returns empty string when no instructions are configured.
- */
-function buildSystemPrompt() {
-  const data = readUserSettingsFile();
-  const instructions = data.instructions || { global: '', folders: [] };
-  const parts = [];
-
-  if (instructions.global && instructions.global.trim()) {
-    parts.push('# User Instructions\n' + instructions.global.trim());
-  }
-
-  if (Array.isArray(instructions.folders)) {
-    for (const folder of instructions.folders) {
-      if (folder.path && folder.instructions && folder.instructions.trim()) {
-        parts.push(`# Instructions for ${folder.path}\n${folder.instructions.trim()}`);
-      }
-    }
-  }
-
-  return parts.join('\n\n');
-}
-
-/**
  * Build the MCP servers config used by the Claude provider.
  * Merges Composio (from session), Smithery (when key and connection exist), and user-defined MCP from user-settings.
  */
@@ -710,8 +597,7 @@ app.patch('/api/chats/:chatId', requireAuth, rateLimit.reports, async (req, res)
     if (!isSafeParamId(req.params.chatId)) {
       return res.status(400).json({ error: 'Invalid chatId' });
     }
-    const { title } = req.body;
-    const chat = await chatStore.updateChatTitle(req.params.chatId, req.user.id, title);
+    const chat = await chatStore.updateChat(req.params.chatId, req.user.id, req.body);
     res.json(chat);
   } catch (err) {
     console.error('[CHATS] Update error:', err);
@@ -957,6 +843,75 @@ app.get('/api/vault/stats', requireAuth, rateLimit.vault, async (req, res) => {
     res.json(stats);
   } catch (err) {
     console.error('[VAULT] Stats error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+// ==================== UNIVERSAL FOLDERS ENDPOINTS ====================
+
+// List folders (by type and parent)
+app.get('/api/folders', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Folders require Supabase' });
+  try {
+    const type = req.query.type;
+    const parentId = req.query.parentId || null;
+    if (!type) return res.status(400).json({ error: 'type is required' });
+    const folders = await folderStore.getFolders(req.user.id, type, parentId);
+    res.json(folders);
+  } catch (err) {
+    console.error('[FOLDERS] List error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+// Create folder
+app.post('/api/folders', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Folders require Supabase' });
+  try {
+    const { name, type, parentId } = req.body;
+    if (!name || !type) return res.status(400).json({ error: 'name and type are required' });
+    const folder = await folderStore.createFolder(req.user.id, name, type, parentId);
+    res.json(folder);
+  } catch (err) {
+    console.error('[FOLDERS] Create error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+// Rename folder
+app.patch('/api/folders/:id', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Folders require Supabase' });
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const folder = await folderStore.renameFolder(req.params.id, req.user.id, name);
+    res.json(folder);
+  } catch (err) {
+    console.error('[FOLDERS] Rename error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+// Delete folder
+app.delete('/api/folders/:id', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Folders require Supabase' });
+  try {
+    await folderStore.deleteFolder(req.params.id, req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[FOLDERS] Delete error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+// Folder breadcrumbs
+app.get('/api/folders/:id/breadcrumbs', requireAuth, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Folders require Supabase' });
+  try {
+    const crumbs = await folderStore.getBreadcrumbs(req.params.id, req.user.id);
+    res.json(crumbs);
+  } catch (err) {
+    console.error('[FOLDERS] Breadcrumbs error:', err);
     sendInternalError(res, err);
   }
 });
@@ -1564,8 +1519,25 @@ app.post('/api/chat', requireAuth, rateLimit.chat, async (req, res) => {
       allowedTools.push(...DOCUMENT_TOOL_NAMES);
     }
 
-    // Build system prompt from user instructions + plugin skills
-    let systemPromptAppend = buildSystemPrompt();
+    // Fetch chat metadata for context
+    let chatMetadata = {};
+    if (isSupabaseConfigured() && chatId) {
+      try {
+        const chat = await chatStore.getChat(chatId, userId);
+        chatMetadata = chat?.metadata || {};
+      } catch (err) {
+        console.warn('[CHAT] Failed to fetch chat metadata:', err.message);
+      }
+    }
+
+    // Fetch direct content from external pinned resources (Notion, GDrive, YouTube)
+    const externalContent = await fetchDirectExternalContext(chatMetadata, composioSession);
+    if (externalContent) {
+      chatMetadata.externalContent = externalContent;
+    }
+
+    // Build system prompt from user instructions + project context + external resources + plugin skills
+    let systemPromptAppend = buildSystemPrompt(chatMetadata);
     if (pluginManager) {
       const pluginPrompt = pluginManager.getSystemPromptAdditions();
       if (pluginPrompt) {
@@ -2143,69 +2115,69 @@ if (fs.existsSync(rendererPath)) {
   app.get('/', (_req, res) => res.sendFile(path.join(rendererPath, 'index.html')));
 }
 
-await initializeProviders();
-await initializeComposioSession();
-await initializeSmitheryConnection();
-scheduleComposioSessionCleanup();
-initializeDataforseoConfig();
-await initializeBrowser();
-initializeDocuments();
-initializePlugins();
+if (process.env.NODE_ENV !== 'test') {
+  await initializeProviders();
+  await initializeComposioSession();
+  await initializeSmitheryConnection();
+  scheduleComposioSessionCleanup();
+  initializeDataforseoConfig();
+  await initializeBrowser();
+  initializeDocuments();
+  initializePlugins();
 
-// Start Supabase cron jobs + job scheduler if configured
-if (isSupabaseConfigured()) {
-  setupCronJobs();
-  startEmbeddingCron();
-  startScheduler().catch(err => console.error('[SCHEDULER] Startup error:', err.message));
-}
-
-// Start server and keep reference to prevent garbage collection
-const server = app.listen(PORT, () => {
-  console.log(`\n✓ Backend server running on http://localhost:${PORT}`);
-  console.log(`✓ Chat endpoint: POST http://localhost:${PORT}/api/chat`);
-  console.log(`✓ Providers endpoint: GET http://localhost:${PORT}/api/providers`);
-  console.log(`✓ Health check: GET http://localhost:${PORT}/api/health`);
-  console.log(`✓ Available providers: ${getAvailableProviders().join(', ')}\n`);
-});
-
-// Keep the process alive
-server.on('error', (err) => {
-  console.error('Server error:', err);
-});
-
-async function shutdown(signal) {
-  if (isShuttingDown) return;
-  isShuttingDown = true;
-
-  console.log(`\n${signal} received. Shutting down server...`);
-  stopScheduler();
-
-  if (composioSessionCleanupTimer) {
-    clearInterval(composioSessionCleanupTimer);
-    composioSessionCleanupTimer = null;
+  // Start Supabase cron jobs + job scheduler if configured
+  if (isSupabaseConfigured()) {
+    setupCronJobs();
+    startEmbeddingCron();
+    startScheduler().catch(err => console.error('[SCHEDULER] Startup error:', err.message));
   }
 
-  if (browserServer) {
-    try {
-      await browserServer.stop();
-    } catch (_) {
-      // ignore browser shutdown failures
-    }
-  }
-
-  await new Promise((resolve) => {
-    const timeout = setTimeout(resolve, 5000);
-    server.close(() => {
-      clearTimeout(timeout);
-      resolve();
-    });
+  // Start server and keep reference to prevent garbage collection
+  const server = app.listen(PORT, () => {
+    console.log(`\n✓ Backend server running on http://localhost:${PORT}`);
+    console.log(`✓ Chat endpoint: POST http://localhost:${PORT}/api/chat`);
+    console.log(`✓ Providers endpoint: GET http://localhost:${PORT}/api/providers`);
+    console.log(`✓ Health check: GET http://localhost:${PORT}/api/health`);
+    console.log(`✓ Available providers: ${getAvailableProviders().join(', ')}\n`);
   });
-  process.exit(0);
+
+  // Keep the process alive
+  server.on('error', (err) => {
+    console.error('Server error:', err);
+  });
+
+  const handleShutdown = async (signal) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    console.log(`\n${signal} received. Shutting down server...`);
+    stopScheduler();
+
+    if (composioSessionCleanupTimer) {
+      clearInterval(composioSessionCleanupTimer);
+      composioSessionCleanupTimer = null;
+    }
+
+    if (browserServer) {
+      try {
+        await browserServer.stop();
+      } catch (_) {
+        // ignore browser shutdown failures
+      }
+    }
+
+    await new Promise((resolve) => {
+      const timeout = setTimeout(resolve, 5000);
+      server.close(() => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 }
 
-process.on('SIGINT', () => {
-  shutdown('SIGINT');
-});
-process.on('SIGTERM', () => {
-  shutdown('SIGTERM');
-});
+export { buildSystemPrompt, fetchDirectExternalContext, readUserSettingsFile };

@@ -18,11 +18,611 @@ const chatTitle = document.getElementById('chatTitle');
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const rightSidebarExpand = document.getElementById('rightSidebarExpand');
-const stepsList = document.getElementById('stepsList');
-const stepsCount = document.getElementById('stepsCount');
-const toolCallsList = document.getElementById('toolCallsList');
-const emptySteps = document.getElementById('emptySteps');
-const emptyTools = document.getElementById('emptyTools');
+const sidebarTabs = document.getElementById('sidebarTabs');
+const progressPanel = document.getElementById('progressPanel');
+const contextPanel = document.getElementById('contextPanel');
+const artifactPanel = document.getElementById('artifactPanel');
+const tabProgress = document.getElementById('tabProgress');
+const tabContext = document.getElementById('tabContext');
+const tabArtifact = document.getElementById('tabArtifact');
+
+// Initialize right sidebar tabs
+if (sidebarTabs) {
+  sidebarTabs.addEventListener('click', (e) => {
+    const tab = e.target.closest('.sidebar-tab');
+    if (!tab || tab.disabled) return;
+
+    const target = tab.dataset.tab;
+    
+    // Update active tab UI
+    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.toggle('active', t === tab));
+    
+    // Update panels
+    progressPanel.style.display = target === 'progress' ? 'flex' : 'none';
+    contextPanel.style.display = target === 'context' ? 'flex' : 'none';
+    artifactPanel.style.display = target === 'artifact' ? 'flex' : 'none';
+  });
+}
+
+const saveContextBtn = document.getElementById('saveContextBtn');
+if (saveContextBtn) {
+  saveContextBtn.addEventListener('click', saveContext);
+}
+
+const contextPinAssetBtn = document.getElementById('contextPinAssetBtn');
+if (contextPinAssetBtn) {
+  contextPinAssetBtn.addEventListener('click', openVaultContextPicker);
+}
+
+const contextAddWebBtn = document.getElementById('contextAddWebBtn');
+if (contextAddWebBtn) {
+  contextAddWebBtn.addEventListener('click', addWebSource);
+}
+
+const contextPinNotionBtn = document.getElementById('contextPinNotionBtn');
+if (contextPinNotionBtn) {
+  contextPinNotionBtn.addEventListener('click', () => openExternalSourcePicker('notion'));
+}
+
+const contextPinClickUpBtn = document.getElementById('contextPinClickUpBtn');
+if (contextPinClickUpBtn) {
+  contextPinClickUpBtn.addEventListener('click', () => openExternalSourcePicker('clickup'));
+}
+
+const contextPinGDriveBtn = document.getElementById('contextPinGDriveBtn');
+if (contextPinGDriveBtn) {
+  contextPinGDriveBtn.addEventListener('click', () => openExternalSourcePicker('gdrive'));
+}
+
+const contextPinYouTubeBtn = document.getElementById('contextPinYouTubeBtn');
+if (contextPinYouTubeBtn) {
+  contextPinYouTubeBtn.addEventListener('click', () => {
+    const url = prompt('Enter YouTube URL:');
+    if (url) addIntegrationItem('youtube', url, url);
+  });
+}
+
+// Estimate tokens (simple proxy: ~4 chars per token)
+function estimateTokens(text) {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+async function updateContextUsage() {
+  const name = document.getElementById('contextProjectName').value;
+  const desc = document.getElementById('contextProjectDesc').value;
+  const instructions = document.getElementById('contextActiveInstructions').value;
+  
+  let totalTokens = 0;
+  totalTokens += estimateTokens(name);
+  totalTokens += estimateTokens(desc);
+  totalTokens += estimateTokens(instructions);
+
+  // Database Weight (Estimate 500 tokens per table schema)
+  const selectedTables = document.querySelectorAll('#contextTableList input[type="checkbox"]:checked');
+  totalTokens += (selectedTables.length * 500);
+
+  // Asset Weight (Estimate 1000 per pinned asset)
+  const pinnedAssets = document.querySelectorAll('#contextPinnedAssets .context-item');
+  totalTokens += (pinnedAssets.length * 1000);
+
+  // Web Source Weight (Estimate 2000 per URL)
+  const webSources = document.querySelectorAll('#contextWebList .context-item');
+  totalTokens += (webSources.length * 2000);
+
+  // External Integrations Weight (Estimate 3000 per item)
+  const integrationItems = document.querySelectorAll('#contextNotionList .context-item, #contextClickUpList .context-item, #contextGDriveList .context-item, #contextYouTubeList .context-item');
+  totalTokens += (integrationItems.length * 3000);
+
+  const maxTokens = 200000; // Proxy for model limit
+  const percentage = Math.min((totalTokens / maxTokens) * 100, 100);
+  
+  const bar = document.getElementById('contextUsageBar');
+  const label = document.getElementById('contextUsageValue');
+  
+  if (bar && label) {
+    bar.style.width = `${percentage}%`;
+    label.textContent = `${(totalTokens / 1000).toFixed(1)}k / ${(maxTokens / 1000)}k tokens`;
+    
+    // Dynamic color
+    bar.classList.remove('low', 'medium', 'high');
+    if (percentage < 30) bar.classList.add('low');
+    else if (percentage < 70) bar.classList.add('medium');
+    else bar.classList.add('high');
+  }
+}
+
+// Add listeners for real-time updates
+['contextProjectName', 'contextProjectDesc', 'contextActiveInstructions'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', updateContextUsage);
+});
+
+async function saveContext() {
+  const name = document.getElementById('contextProjectName').value;
+  const desc = document.getElementById('contextProjectDesc').value;
+  const instructions = document.getElementById('contextActiveInstructions').value;
+
+  // Gather selected tables
+  const selectedTables = [];
+  document.querySelectorAll('#contextTableList input[type="checkbox"]:checked').forEach(cb => {
+    selectedTables.push(cb.value);
+  });
+
+  // Gather pinned assets
+  const pinnedAssetIds = Array.from(document.querySelectorAll('#contextPinnedAssets .context-item')).map(item => item.dataset.id);
+
+  // Gather web sources
+  const webSources = Array.from(document.querySelectorAll('#contextWebList .context-item')).map(item => item.dataset.url);
+
+  // Gather external integrations
+  const getItems = (id) => {
+    const container = document.getElementById(id);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('.context-item')).map(item => ({ id: item.dataset.id, title: item.dataset.title }));
+  };
+  
+  const notionItems = getItems('contextNotionList');
+  const clickupItems = getItems('contextClickUpList');
+  const gdriveItems = getItems('contextGDriveList');
+  const youtubeItems = getItems('contextYouTubeList');
+
+  if (!currentChatId) {
+    showAppError('Please select a chat to save context');
+    return;
+  }
+
+  try {
+    saveContextBtn.disabled = true;
+    saveContextBtn.textContent = 'Saving...';
+    
+    await window.electronAPI.updateChat(currentChatId, {
+      metadata: {
+        project: { name, desc },
+        instructions,
+        database: { tables: selectedTables },
+        assets: { pinnedIds: pinnedAssetIds },
+        webSources,
+        integrations: {
+          notion: notionItems,
+          clickup: clickupItems,
+          gdrive: gdriveItems,
+          youtube: youtubeItems
+        }
+      }
+    });
+    
+    saveContextBtn.textContent = 'Updated!';
+    updateContextUsage();
+    setTimeout(() => {
+      saveContextBtn.disabled = false;
+      saveContextBtn.textContent = 'Update Context';
+    }, 2000);
+  } catch (err) {
+    console.error('Save context failed:', err);
+    showAppError('Failed to save context');
+    saveContextBtn.disabled = false;
+    saveContextBtn.textContent = 'Update Context';
+  }
+}
+    return;
+  }
+
+  try {
+    saveContextBtn.disabled = true;
+    saveContextBtn.textContent = 'Saving...';
+    
+    await window.electronAPI.updateChat(currentChatId, {
+      metadata: {
+        project: { name, desc },
+        instructions,
+        database: { tables: selectedTables },
+        assets: { pinnedIds: pinnedAssetIds },
+        webSources,
+        integrations: {
+          notion: notionItems,
+          clickup: clickupItems
+        }
+      }
+    });
+    
+    saveContextBtn.textContent = 'Updated!';
+    updateContextUsage();
+    setTimeout(() => {
+      saveContextBtn.disabled = false;
+      saveContextBtn.textContent = 'Update Context';
+    }, 2000);
+  } catch (err) {
+    console.error('Save context failed:', err);
+    showAppError('Failed to save context');
+    saveContextBtn.disabled = false;
+    saveContextBtn.textContent = 'Update Context';
+  }
+}
+
+// Generic external source picker (Notion/ClickUp/GDrive)
+async function openExternalSourcePicker(type) {
+  const btnMap = { notion: 'contextPinNotionBtn', clickup: 'contextPinClickUpBtn', gdrive: 'contextPinGDriveBtn' };
+  const btn = document.getElementById(btnMap[type]);
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'vault-picker-dropdown';
+  dropdown.style.right = (window.innerWidth - rect.right) + 'px';
+  dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+
+  const labelMap = { notion: 'Notion Page', clickup: 'ClickUp List', gdrive: 'Google Drive File' };
+  dropdown.innerHTML = `
+    <div class="vault-picker-header">
+      <div style="font-size:11px;font-weight:600;margin-bottom:8px;color:var(--text-tertiary)">Select ${labelMap[type]}</div>
+      <input type="text" class="vault-picker-search" placeholder="Search..." />
+    </div>
+    <div class="vault-picker-list"><div class="vault-picker-loading">Loading from Composio...</div></div>
+  `;
+  document.body.appendChild(dropdown);
+
+  const listEl = dropdown.querySelector('.vault-picker-list');
+  
+  // Simulation: using Composio to fetch list
+  setTimeout(() => {
+    const mockItems = {
+      notion: [{ id: 'n1', title: 'Brand Guidelines' }, { id: 'n2', title: 'Product Specs' }, { id: 'n3', title: 'Marketing Calendar' }],
+      clickup: [{ id: 'c1', title: 'Engineering Sprint' }, { id: 'c2', title: 'Content Backlog' }, { id: 'c3', title: 'Bug Tracking' }],
+      gdrive: [{ id: 'g1', title: 'Q1 Strategy.pdf' }, { id: 'g2', title: 'Financial Model.xlsx' }, { id: 'g3', title: 'Project Assets' }]
+    };
+    
+    listEl.innerHTML = (mockItems[type] || []).map(item => `
+      <div class="vault-picker-item" data-id="${item.id}" data-title="${item.title}">
+        <div class="vault-picker-name">${escapeHtml(item.title)}</div>
+      </div>
+    `).join('');
+
+    listEl.querySelectorAll('.vault-picker-item').forEach(el => {
+      el.onclick = () => {
+        const { id, title } = el.dataset;
+        addIntegrationItem(type, id, title);
+        dropdown.remove();
+      };
+    });
+  }, 800);
+
+  // Close on click outside
+  setTimeout(() => {
+    document.addEventListener('click', function handler(e) {
+      if (!dropdown.contains(e.target) && e.target !== btn) {
+        dropdown.remove();
+        document.removeEventListener('click', handler);
+      }
+    });
+  }, 0);
+}
+
+function addIntegrationItem(type, id, title) {
+  const containerIdMap = { notion: 'contextNotionList', clickup: 'contextClickUpList', gdrive: 'contextGDriveList', youtube: 'contextYouTubeList' };
+  const containerId = containerIdMap[type];
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  const existing = Array.from(container.querySelectorAll('.context-item')).map(el => el.dataset.id);
+  if (existing.includes(id)) return;
+
+  if (container.querySelector('.empty-state')) container.innerHTML = '';
+
+  const item = document.createElement('div');
+  item.className = 'context-item';
+  item.dataset.id = id;
+  item.dataset.title = title;
+  
+  let iconHtml = '';
+  if (type === 'notion') iconHtml = '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line>';
+  else if (type === 'clickup') iconHtml = '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>';
+  else if (type === 'gdrive') iconHtml = '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>';
+  else if (type === 'youtube') iconHtml = '<path d="M22.54 6.42a2.78 2.82 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.82 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.82 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.82 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon>';
+
+  item.innerHTML = `
+    <svg style="width:14px;height:14px;color:var(--text-tertiary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      ${iconHtml}
+    </svg>
+    <span style="flex:1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+    <button class="folder-action-btn" onclick="removeIntegrationItem('${type}', '${escapeHtml(id)}')" title="Remove">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+  `;
+  container.appendChild(item);
+  updateContextUsage();
+}
+
+window.removeIntegrationItem = function(type, id) {
+  const containerIdMap = { notion: 'contextNotionList', clickup: 'contextClickUpList', gdrive: 'contextGDriveList', youtube: 'contextYouTubeList' };
+  const containerId = containerIdMap[type];
+  const item = document.querySelector(`#${containerId} .context-item[data-id="${id}"]`);
+  if (item) item.remove();
+  
+  const container = document.getElementById(containerId);
+  if (container.querySelectorAll('.context-item').length === 0) {
+    const labelMap = { notion: 'pages', clickup: 'lists', gdrive: 'files', youtube: 'videos' };
+    container.innerHTML = `<div class="empty-state">No ${labelMap[type]} pinned</div>`;
+  }
+  updateContextUsage();
+};
+
+function addWebSource() {
+  const input = document.getElementById('contextWebInput');
+  const url = input.value.trim();
+  if (!url) return;
+
+  try {
+    new URL(url); // Validate URL
+  } catch (_) {
+    showAppError('Please enter a valid URL (including https://)');
+    return;
+  }
+
+  const container = document.getElementById('contextWebList');
+  const existing = Array.from(container.querySelectorAll('.context-item')).map(el => el.dataset.url);
+  
+  if (existing.includes(url)) {
+    input.value = '';
+    return;
+  }
+
+  if (container.querySelector('.empty-state')) container.innerHTML = '';
+
+  const item = document.createElement('div');
+  item.className = 'context-item';
+  item.dataset.url = url;
+  item.innerHTML = `
+    <svg style="width:14px;height:14px;color:var(--text-tertiary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+    </svg>
+    <span style="flex:1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${url}">${url}</span>
+    <button class="folder-action-btn" onclick="removeWebSource('${url}')" title="Remove">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+  `;
+  container.appendChild(item);
+  input.value = '';
+  updateContextUsage();
+}
+
+window.removeWebSource = function(url) {
+  const item = document.querySelector(`#contextWebList .context-item[data-url="${url}"]`);
+  if (item) item.remove();
+  if (document.querySelectorAll('#contextWebList .context-item').length === 0) {
+    document.getElementById('contextWebList').innerHTML = '<div class="empty-state">No URLs added</div>';
+  }
+  updateContextUsage();
+};
+
+async function loadContextTables(selectedList = []) {
+  const container = document.getElementById('contextTableList');
+  if (!container) return;
+
+  try {
+    const access = await window.electronAPI.getDatabaseAccess();
+    if (!access?.allowed) {
+      container.innerHTML = '<div class="empty-state">Connect Supabase Admin to see tables</div>';
+      return;
+    }
+
+    const { tables } = await window.electronAPI.getDatabaseTables();
+    if (!tables || tables.length === 0) {
+      container.innerHTML = '<div class="empty-state">No tables found</div>';
+      return;
+    }
+
+    container.innerHTML = '';
+    tables.forEach(table => {
+      const item = document.createElement('div');
+      item.className = 'context-item';
+      
+      const label = document.createElement('label');
+      label.className = 'context-checkbox-label';
+      
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = table.name;
+      cb.checked = selectedList.includes(table.name);
+      cb.addEventListener('change', updateContextUsage);
+      
+      const name = document.createElement('span');
+      name.textContent = table.name;
+      
+      label.append(cb, name);
+      item.appendChild(label);
+      container.appendChild(item);
+    });
+    updateContextUsage();
+  } catch (err) {
+    console.error('Failed to load context tables:', err);
+    container.innerHTML = '<div class="empty-state">Error loading tables</div>';
+  }
+}
+
+function updateContextPanel(chat) {
+  const meta = chat?.metadata || {};
+  const project = meta.project || {};
+  const db = meta.database || {};
+  const assets = meta.assets || {};
+  const integrations = meta.integrations || {};
+  
+  document.getElementById('contextProjectName').value = project.name || '';
+  document.getElementById('contextProjectDesc').value = project.desc || '';
+  document.getElementById('contextActiveInstructions').value = meta.instructions || '';
+  
+  loadContextTables(db.tables || []);
+  renderPinnedAssets(assets.pinnedIds || []);
+  renderWebSources(meta.webSources || []);
+  renderIntegrationItems('notion', integrations.notion || []);
+  renderIntegrationItems('clickup', integrations.clickup || []);
+  renderIntegrationItems('gdrive', integrations.gdrive || []);
+  renderIntegrationItems('youtube', integrations.youtube || []);
+  updateContextUsage();
+}
+
+function renderIntegrationItems(type, items) {
+  const containerIdMap = { notion: 'contextNotionList', clickup: 'contextClickUpList', gdrive: 'contextGDriveList', youtube: 'contextYouTubeList' };
+  const containerId = containerIdMap[type];
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  
+  if (!items || items.length === 0) {
+    const labelMap = { notion: 'pages', clickup: 'lists', gdrive: 'files', youtube: 'videos' };
+    container.innerHTML = `<div class="empty-state">No ${labelMap[type]} pinned</div>`;
+    return;
+  }
+
+  container.innerHTML = '';
+  items.forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'context-item';
+    el.dataset.id = item.id;
+    el.dataset.title = item.title;
+    
+    let iconHtml = '';
+    if (type === 'notion') iconHtml = '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line>';
+    else if (type === 'clickup') iconHtml = '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>';
+    else if (type === 'gdrive') iconHtml = '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>';
+    else if (type === 'youtube') iconHtml = '<path d="M22.54 6.42a2.78 2.82 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.82 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.82 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.82 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon>';
+
+    el.innerHTML = `
+      <svg style="width:14px;height:14px;color:var(--text-tertiary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        ${iconHtml}
+      </svg>
+      <span style="flex:1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+      <button class="folder-action-btn" onclick="removeIntegrationItem('${type}', '${escapeHtml(item.id)}')" title="Remove">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    `;
+    container.appendChild(el);
+  });
+}
+
+function renderWebSources(urls) {
+  const container = document.getElementById('contextWebList');
+  if (!container) return;
+  
+  if (!urls || urls.length === 0) {
+    container.innerHTML = '<div class="empty-state">No URLs added</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  urls.forEach(url => {
+    const item = document.createElement('div');
+    item.className = 'context-item';
+    item.dataset.url = url;
+    item.innerHTML = `
+      <svg style="width:14px;height:14px;color:var(--text-tertiary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+      </svg>
+      <span style="flex:1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${url}">${url}</span>
+      <button class="folder-action-btn" onclick="removeWebSource('${url}')" title="Remove">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    `;
+    container.appendChild(item);
+  });
+}
+
+async function renderPinnedAssets(assetIds) {
+  const container = document.getElementById('contextPinnedAssets');
+  if (!container) return;
+  
+  if (!assetIds || assetIds.length === 0) {
+    container.innerHTML = '<div class="empty-state">No assets pinned</div>';
+    return;
+  }
+
+  try {
+    // We need to fetch asset details for these IDs
+    // For now, let's just show the IDs or placeholders until we have a getAssetsByIds endpoint
+    container.innerHTML = '';
+    assetIds.forEach(id => {
+      const item = document.createElement('div');
+      item.className = 'context-item';
+      item.dataset.id = id;
+      item.innerHTML = `
+        <svg style="width:14px;height:14px;color:var(--text-tertiary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+        </svg>
+        <span style="flex:1;">Asset ${id.slice(0, 8)}...</span>
+        <button class="folder-action-btn" onclick="unpinAsset('${id}')" title="Unpin">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      `;
+      container.appendChild(item);
+    });
+  } catch (err) {
+    console.error('Failed to render pinned assets:', err);
+  }
+}
+
+window.unpinAsset = function(id) {
+  const item = document.querySelector(`#contextPinnedAssets .context-item[data-id="${id}"]`);
+  if (item) item.remove();
+  if (document.querySelectorAll('#contextPinnedAssets .context-item').length === 0) {
+    document.getElementById('contextPinnedAssets').innerHTML = '<div class="empty-state">No assets pinned</div>';
+  }
+};
+
+// Open vault picker to pin an asset
+async function openVaultContextPicker() {
+  const api = window.electronAPI || window.webAPI;
+  const btn = document.getElementById('contextPinAssetBtn');
+  const rect = btn.getBoundingClientRect();
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'vault-picker-dropdown';
+  dropdown.style.right = (window.innerWidth - rect.right) + 'px';
+  dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+
+  dropdown.innerHTML = `
+    <div class="vault-picker-header">
+      <input type="text" class="vault-picker-search" placeholder="Search to pin..." />
+    </div>
+    <div class="vault-picker-list"><div class="vault-picker-loading">Loading...</div></div>
+  `;
+  document.body.appendChild(dropdown);
+
+  const listEl = dropdown.querySelector('.vault-picker-list');
+  try {
+    const result = await api.getVaultAssets({ limit: 50 });
+    const assets = Array.isArray(result) ? result : (result.assets || []);
+    
+    listEl.innerHTML = assets.map(a => `
+      <div class="vault-picker-item" data-id="${a.id}">
+        <div class="vault-picker-name">${escapeHtml(a.display_name || a.file_name)}</div>
+      </div>
+    `).join('');
+
+    listEl.querySelectorAll('.vault-picker-item').forEach(item => {
+      item.onclick = () => {
+        const id = item.dataset.id;
+        // Add to pinned list if not already there
+        const currentIds = Array.from(document.querySelectorAll('#contextPinnedAssets .context-item')).map(el => el.dataset.id);
+        if (!currentIds.includes(id)) {
+          renderPinnedAssets([...currentIds, id]);
+        }
+        dropdown.remove();
+      };
+    });
+  } catch (err) {
+    listEl.innerHTML = '<div class="empty-state">Error</div>';
+  }
+
+  // Close on click outside
+  setTimeout(() => {
+    document.addEventListener('click', function handler(e) {
+      if (!dropdown.contains(e.target) && e.target !== btn) {
+        dropdown.remove();
+        document.removeEventListener('click', handler);
+      }
+    });
+  }, 0);
+}
 
 // DOM Elements - Left Sidebar (Chat History)
 const chatHistoryList = document.getElementById('chatHistoryList');
@@ -198,7 +798,10 @@ let artifactCounter = 0;
 
 // Multi-chat state
 let allChats = [];
+let allJobs = [];
+let allReports = [];
 let currentChatId = null;
+let currentFolderType = 'chat'; // 'chat' | 'job' | 'report'
 
 // Main view state (home | chat | settings)
 let currentMainView = 'home';
@@ -223,6 +826,7 @@ async function init() {
   setupEventListeners();
   setupAuthListeners();
   initArtifactPanel();
+  setupCommandPalette();
 
   // Check backend health banner
   const banner = document.getElementById('backendBanner');
@@ -258,6 +862,7 @@ async function init() {
 function onAuthReady(session) {
   if (session) {
     showAppAfterAuth(session);
+    showView('home');
   } else {
     showAuthView();
   }
@@ -283,8 +888,9 @@ function showAppAfterAuth(session) {
   if (userEmailLabel && user) {
     userEmailLabel.textContent = user.email || '';
   }
-  if (signoutSidebarBtn) {
-    signoutSidebarBtn.classList.remove('hidden');
+  const navSignOutBtn = document.getElementById('navSignOutBtn');
+  if (navSignOutBtn) {
+    navSignOutBtn.classList.remove('hidden');
   }
 
   // Show search bar when authenticated with API
@@ -294,15 +900,16 @@ function showAppAfterAuth(session) {
   }
 
   // Check if user has database admin access
-  const dbBtn = document.getElementById('dbSidebarBtn');
-  if (dbBtn && window.electronAPI?.getDatabaseAccess) {
+  const navDbBtn = document.getElementById('navDbBtn');
+  if (navDbBtn && window.electronAPI?.getDatabaseAccess) {
     window.electronAPI.getDatabaseAccess().then(result => {
-      if (result?.allowed) dbBtn.classList.remove('hidden');
+      if (result?.allowed) navDbBtn.classList.remove('hidden');
     }).catch(() => {});
   }
 
   // Load chats (from API if Supabase, else localStorage)
   loadAllChats();
+  loadChatFolders();
   renderChatHistory();
 
   // Migrate localStorage to Supabase on first login
@@ -311,6 +918,321 @@ function showAppAfterAuth(session) {
   }
 
   homeInput.focus();
+}
+
+// ==================== FOLDERS LOGIC ====================
+let chatFolders = [];
+let workflowFolders = [];
+let reportFolders = [];
+let folderOpenState = new Set(); // Set of folder IDs that are expanded
+
+async function loadFolders(type = 'chat') {
+  if (!useApi()) return;
+  try {
+    const folders = await window.electronAPI.getFolders(type);
+    const list = Array.isArray(folders) ? folders : (folders.data || []);
+    if (type === 'chat') {
+      chatFolders = list;
+      renderChatFolders();
+    } else if (type === 'job') {
+      workflowFolders = list;
+      renderWorkflowFolders();
+    } else if (type === 'report') {
+      reportFolders = list;
+      renderReportFolders();
+    }
+  } catch (err) {
+    console.error(`Failed to load ${type} folders:`, err);
+  }
+}
+
+async function loadChatFolders() {
+  await loadFolders('chat');
+}
+
+function renderChatFolders() {
+  renderFolders('chat', 'chatFoldersList', chatFolders, allChats, buildChatHistoryItem);
+}
+
+function renderWorkflowFolders() {
+  renderFolders('job', 'workflowFoldersList', workflowFolders, allJobs, buildWorkflowHistoryItem);
+}
+
+function renderReportFolders() {
+  renderFolders('report', 'reportFoldersList', reportFolders, allReports, buildReportHistoryItem);
+}
+
+function renderFolders(type, containerId, folders, items, buildItemFn) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+
+  const rootFolders = folders.filter(f => !f.parent_id);
+  
+  rootFolders.forEach(folder => {
+    const folderEl = document.createElement('div');
+    folderEl.className = 'folder-wrapper';
+    
+    const isOpen = folderOpenState.has(folder.id);
+    
+    const item = document.createElement('div');
+    item.className = 'folder-item' + (isOpen ? ' open' : '');
+    item.dataset.id = folder.id;
+    item.draggable = true;
+    
+    const icon = document.createElement('div');
+    icon.className = 'folder-icon';
+    icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+    
+    const name = document.createElement('span');
+    name.className = 'folder-name';
+    name.textContent = folder.name;
+    
+    const actions = document.createElement('div');
+    actions.className = 'folder-actions';
+    
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'folder-action-btn';
+    renameBtn.title = 'Rename';
+    renameBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>`;
+    renameBtn.onclick = (e) => { e.stopPropagation(); renameFolder(folder.id, folder.name, type); };
+    
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'folder-action-btn';
+    deleteBtn.title = 'Delete';
+    deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+    deleteBtn.onclick = (e) => { e.stopPropagation(); deleteFolder(folder.id, type); };
+    
+    actions.append(renameBtn, deleteBtn);
+    item.append(icon, name, actions);
+    
+    item.addEventListener('click', () => toggleFolder(folder.id, type));
+    item.addEventListener('dragover', handleFolderDragOver);
+    item.addEventListener('dragleave', handleFolderDragLeave);
+    item.addEventListener('drop', (e) => handleFolderDrop(e, folder.id, type));
+    
+    folderEl.appendChild(item);
+    
+    const childrenContainer = document.createElement('div');
+    childrenContainer.className = 'folder-children';
+    if (isOpen) {
+      const itemsInFolder = items.filter(i => i.folder_id === folder.id);
+      itemsInFolder.forEach(itemData => {
+        const itemEl = buildItemFn(itemData);
+        childrenContainer.appendChild(itemEl);
+      });
+      if (itemsInFolder.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'chat-history-empty';
+        empty.style.padding = '4px 8px';
+        empty.style.fontSize = '11px';
+        empty.textContent = 'Empty';
+        childrenContainer.appendChild(empty);
+      }
+    }
+    
+    folderEl.appendChild(childrenContainer);
+    container.appendChild(folderEl);
+  });
+}
+
+async function createFolder(type) {
+  const label = type === 'job' ? 'Workflow' : type.charAt(0).toUpperCase() + type.slice(1);
+  const name = prompt(`${label} Folder Name:`);
+  if (!name) return;
+  try {
+    await window.electronAPI.createFolder(name, type);
+    loadFolders(type);
+  } catch (err) {
+    console.error('Create folder failed:', err);
+  }
+}
+
+async function createChatFolder() {
+  await createFolder('chat');
+}
+
+async function renameFolder(id, oldName, type) {
+  const newName = prompt('Rename folder:', oldName);
+  if (!newName || newName === oldName) return;
+  try {
+    await window.electronAPI.renameFolder(id, newName);
+    loadFolders(type);
+  } catch (err) {
+    console.error('Rename folder failed:', err);
+  }
+}
+
+async function deleteFolder(id, type) {
+  if (!confirm('Delete folder? Items inside will be moved to root.')) return;
+  try {
+    await window.electronAPI.deleteFolder(id);
+    loadFolders(type);
+    if (type === 'chat') {
+      loadAllChats();
+    } else if (type === 'job') {
+      loadJobs();
+    } else if (type === 'report') {
+      loadSavedReports();
+    }
+  } catch (err) {
+    console.error('Delete folder failed:', err);
+  }
+}
+
+function toggleFolder(id, type) {
+  if (folderOpenState.has(id)) {
+    folderOpenState.delete(id);
+  } else {
+    folderOpenState.add(id);
+  }
+  if (type === 'chat') renderChatFolders();
+  else if (type === 'job') renderWorkflowFolders();
+  else if (type === 'report') renderReportFolders();
+}
+
+// Drag & Drop Handlers
+function handleFolderDragOver(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add('drag-over');
+}
+
+function handleFolderDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+async function handleFolderDrop(e, folderId, type) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const itemId = e.dataTransfer.getData(`text/${type}-id`);
+  if (!itemId) return;
+  
+  try {
+    if (type === 'chat') {
+      const chat = allChats.find(c => c.id === itemId);
+      if (chat) chat.folder_id = folderId;
+      renderChatFolders();
+      renderChatHistory();
+      await window.electronAPI.updateChat(itemId, { folder_id: folderId });
+    } else if (type === 'job') {
+      const job = allJobs.find(j => j.id === itemId);
+      if (job) job.folder_id = folderId;
+      renderWorkflowFolders();
+      loadJobs(); 
+      await window.electronAPI.updateJob(itemId, { folder_id: folderId });
+    } else if (type === 'report') {
+      const report = allReports.find(r => r.id === itemId);
+      if (report) report.folder_id = folderId;
+      renderReportFolders();
+      loadSavedReports();
+      await window.electronAPI.updateSavedReport(itemId, { folder_id: folderId });
+    }
+  } catch (err) {
+    console.error(`Move ${type} failed:`, err);
+    if (type === 'chat') loadAllChats();
+    else if (type === 'job') loadJobs();
+    else if (type === 'report') loadSavedReports();
+  }
+}
+
+function buildChatHistoryItem(chat) {
+  const item = document.createElement('div');
+  item.className = 'chat-history-item' + (chat.id === currentChatId ? ' active' : '');
+  item.draggable = true;
+  item.dataset.id = chat.id;
+  
+  const safeTitle = escapeHtml(chat.title || 'New chat');
+  item.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+    </svg>
+    <span class="chat-title">${safeTitle}</span>
+    <button class="delete-chat-btn" type="button" title="Delete" aria-label="Delete chat ${safeTitle}"></button>
+  `;
+  
+  const deleteBtn = item.querySelector('.delete-chat-btn');
+  deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+  deleteBtn.addEventListener('click', (event) => deleteChat(chat.id, event));
+  
+  item.onclick = (e) => {
+    if (!e.target.closest('.delete-chat-btn')) switchToChat(chat.id);
+  };
+  
+  item.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/chat-id', chat.id);
+    item.classList.add('dragging');
+  });
+  
+  item.addEventListener('dragend', () => {
+    item.classList.remove('dragging');
+  });
+  
+  return item;
+}
+
+function buildWorkflowHistoryItem(job) {
+  const item = document.createElement('div');
+  item.className = 'chat-history-item';
+  item.draggable = true;
+  item.dataset.id = job.id;
+  
+  const safeName = escapeHtml(job.name || 'Untitled Workflow');
+  item.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"></circle>
+      <polyline points="12 6 12 12 16 14"></polyline>
+    </svg>
+    <span class="chat-title">${safeName}</span>
+  `;
+  
+  item.onclick = () => {
+    showView('jobs');
+    // For now just switching view, could highlight later
+  };
+  
+  item.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/job-id', job.id);
+    item.classList.add('dragging');
+  });
+  
+  item.addEventListener('dragend', () => {
+    item.classList.remove('dragging');
+  });
+  
+  return item;
+}
+
+function buildReportHistoryItem(report) {
+  const item = document.createElement('div');
+  item.className = 'chat-history-item';
+  item.draggable = true;
+  item.dataset.id = report.id;
+  
+  const safeName = escapeHtml(report.name || 'Untitled Report');
+  item.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="18" y1="20" x2="18" y2="10"></line>
+      <line x1="12" y1="20" x2="12" y2="4"></line>
+      <line x1="6" y1="20" x2="6" y2="14"></line>
+    </svg>
+    <span class="chat-title">${safeName}</span>
+  `;
+  
+  item.onclick = () => {
+    showView('reports');
+    openSavedReport(report.id);
+  };
+  
+  item.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/report-id', report.id);
+    item.classList.add('dragging');
+  });
+  
+  item.addEventListener('dragend', () => {
+    item.classList.remove('dragging');
+  });
+  
+  return item;
 }
 
 // Setup auth form listeners
@@ -645,6 +1567,210 @@ function loadAllChatsFromLocalStorage() {
   }
 }
 
+// ==================== COMMAND PALETTE LOGIC ====================
+let paletteSelectedIndex = -1;
+let paletteResults = [];
+
+function setupCommandPalette() {
+  const palette = document.getElementById('commandPalette');
+  const input = document.getElementById('commandPaletteInput');
+  const resultsContainer = document.getElementById('commandPaletteResults');
+
+  if (!palette || !input) return;
+
+  // Global shortcut: Cmd+K or Ctrl+K
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      toggleCommandPalette();
+    }
+    if (e.key === 'Escape' && !palette.classList.contains('hidden')) {
+      toggleCommandPalette(false);
+    }
+  });
+
+  input.addEventListener('input', () => {
+    const query = input.value.trim();
+    performPaletteSearch(query);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      movePaletteSelection(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      movePaletteSelection(-1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const selected = resultsContainer.querySelector('.result-item.selected');
+      if (selected) selected.click();
+    }
+  });
+
+  // Close when clicking overlay
+  palette.addEventListener('click', (e) => {
+    if (e.target === palette) toggleCommandPalette(false);
+  });
+}
+
+function toggleCommandPalette(show) {
+  const palette = document.getElementById('commandPalette');
+  const input = document.getElementById('commandPaletteInput');
+  
+  const isVisible = !palette.classList.contains('hidden');
+  const shouldShow = show !== undefined ? show : !isVisible;
+
+  palette.classList.toggle('hidden', !shouldShow);
+  if (shouldShow) {
+    input.value = '';
+    performPaletteSearch(''); // Initial load: show commands
+    input.focus();
+  }
+}
+
+async function performPaletteSearch(query) {
+  const results = [];
+  
+  // 1. Navigation Commands (Always shown if query is empty or starts with /)
+  if (!query || query.startsWith('/')) {
+    const cmdQuery = query.startsWith('/') ? query.slice(1) : query;
+    const navs = [
+      { type: 'nav', title: 'Home', subtitle: 'Go to overview', view: 'home', icon: 'home' },
+      { type: 'nav', title: 'Tasks', subtitle: 'Manage board & planner', view: 'tasks', icon: 'check-square' },
+      { type: 'nav', title: 'Vault', subtitle: 'View assets & files', view: 'vault', icon: 'folder' },
+      { type: 'nav', title: 'Reports', subtitle: 'Usage & analytics', view: 'reports', icon: 'bar-chart' },
+      { type: 'nav', title: 'Workflows', subtitle: 'Scheduled automations', view: 'jobs', icon: 'clock' },
+      { type: 'nav', title: 'Settings', subtitle: 'Keys & configuration', view: 'settings', icon: 'settings' }
+    ];
+    results.push(...navs.filter(n => n.title.toLowerCase().includes(cmdQuery.toLowerCase())));
+  }
+
+  // 2. Chat Search
+  if (query.length > 1) {
+    const matchingChats = allChats.filter(c => c.title?.toLowerCase().includes(query.toLowerCase()));
+    results.push(...matchingChats.slice(0, 5).map(c => ({
+      type: 'chat',
+      id: c.id,
+      title: c.title || 'Untitled Chat',
+      subtitle: `Last updated: ${new Date(c.updatedAt).toLocaleDateString()}`,
+      icon: 'message-square'
+    })));
+  }
+
+  // 3. Vault Search (Only if API available)
+  if (query.length > 1 && useApi()) {
+    try {
+      const vaultRes = await window.electronAPI.getVaultAssets({ limit: 5 });
+      const assets = Array.isArray(vaultRes) ? vaultRes : (vaultRes.assets || []);
+      results.push(...assets.filter(a => (a.display_name || a.file_name).toLowerCase().includes(query.toLowerCase())).map(a => ({
+        type: 'asset',
+        id: a.id,
+        title: a.display_name || a.file_name,
+        subtitle: `In Vault \u00B7 ${a.file_type}`,
+        icon: 'file'
+      })));
+    } catch (_) {}
+  }
+
+  paletteResults = results;
+  renderPaletteResults(results);
+}
+
+function renderPaletteResults(results) {
+  const container = document.getElementById('commandPaletteResults');
+  if (!container) return;
+  
+  if (results.length === 0) {
+    container.innerHTML = '<div class="empty-state">No results found</div>';
+    paletteSelectedIndex = -1;
+    return;
+  }
+
+  // Group results
+  const groups = {
+    nav: { label: 'Navigation', items: [] },
+    chat: { label: 'Chats', items: [] },
+    asset: { label: 'Assets', items: [] },
+    task: { label: 'Tasks', items: [] }
+  };
+
+  results.forEach(r => {
+    if (groups[r.type]) groups[r.type].items.push(r);
+  });
+
+  let html = '';
+  let globalIndex = 0;
+  
+  Object.keys(groups).forEach(key => {
+    const group = groups[key];
+    if (group.items.length === 0) return;
+    
+    html += `<div class="result-group-header">${group.label}</div>`;
+    group.items.forEach(item => {
+      html += `
+        <div class="result-item" data-index="${globalIndex}" onclick="executePaletteAction(${globalIndex})">
+          <div class="result-icon">
+            ${getPaletteIcon(item.icon)}
+          </div>
+          <div class="result-info">
+            <div class="result-title">${escapeHtml(item.title)}</div>
+            <div class="result-subtitle">${escapeHtml(item.subtitle)}</div>
+          </div>
+        </div>
+      `;
+      globalIndex++;
+    });
+  });
+
+  container.innerHTML = html;
+  movePaletteSelection(0); // Select first item
+}
+
+function movePaletteSelection(dir) {
+  const items = document.querySelectorAll('.result-item');
+  if (items.length === 0) return;
+
+  paletteSelectedIndex += dir;
+  if (paletteSelectedIndex < 0) paletteSelectedIndex = items.length - 1;
+  if (paletteSelectedIndex >= items.length) paletteSelectedIndex = 0;
+
+  items.forEach((item, idx) => {
+    item.classList.toggle('selected', idx === paletteSelectedIndex);
+    if (idx === paletteSelectedIndex) item.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+window.executePaletteAction = function(index) {
+  const action = paletteResults[index];
+  if (!action) return;
+
+  toggleCommandPalette(false);
+
+  if (action.type === 'nav') {
+    showView(action.view);
+  } else if (action.type === 'chat') {
+    switchToChat(action.id);
+  } else if (action.type === 'asset') {
+    showView('vault');
+    // We could potentially auto-select or open the asset here
+  }
+};
+
+function getPaletteIcon(iconName) {
+  const icons = {
+    'home': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>',
+    'check-square': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>',
+    'folder': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
+    'bar-chart': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>',
+    'clock': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+    'settings': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
+    'message-square': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>',
+    'file': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>'
+  };
+  return icons[iconName] || '';
+}
+
 // Update provider UI across all dropdowns
 function updateProviderUI(provider) {
   const providerLabel = providerModels[provider]?.length ? 'Claude' : 'Claude';
@@ -672,6 +1798,9 @@ function loadChat(chat) {
   toolCalls = chat.toolCalls || [];
   clearArtifacts();
   if (chat.artifacts) restoreArtifacts(chat.artifacts);
+  
+  // Update Context Panel
+  updateContextPanel(chat);
 
   // Restore provider/model for this chat
   if (chat.provider && providerModels[chat.provider]) {
@@ -807,42 +1936,19 @@ function renderChatMessages(messages) {
   scrollToBottom();
 }
 
-// Render chat history sidebar
+// Render chat history sidebar (Root items only)
 function renderChatHistory() {
   chatHistoryList.innerHTML = '';
 
-  if (allChats.length === 0) {
+  const rootChats = allChats.filter(c => !c.folder_id).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+  if (rootChats.length === 0 && chatFolders.length === 0) {
     chatHistoryList.innerHTML = '<div class="chat-history-empty">No chats yet</div>';
     return;
   }
 
-  // Sort by updated time (most recent first)
-  const sortedChats = [...allChats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-
-  sortedChats.forEach(chat => {
-    const item = document.createElement('div');
-    item.className = 'chat-history-item' + (chat.id === currentChatId ? ' active' : '');
-    const safeTitle = escapeHtml(chat.title || 'New chat');
-    item.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-      </svg>
-      <span class="chat-title">${safeTitle}</span>
-      <button class="delete-chat-btn" type="button" title="Delete" aria-label="Delete chat ${safeTitle}"></button>
-    `;
-    const deleteBtn = item.querySelector('.delete-chat-btn');
-    deleteBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-      </svg>
-    `;
-    deleteBtn.addEventListener('click', (event) => deleteChat(chat.id, event));
-    item.onclick = (e) => {
-      if (!e.target.closest('.delete-chat-btn')) {
-        switchToChat(chat.id);
-      }
-    };
+  rootChats.forEach(chat => {
+    const item = buildChatHistoryItem(chat);
     chatHistoryList.appendChild(item);
   });
 }
@@ -1526,9 +2632,9 @@ function setupEventListeners() {
   leftSidebarExpand.addEventListener('click', toggleLeftSidebar);
 
   // Database Explorer
-  const dbSidebarBtn = document.getElementById('dbSidebarBtn');
+  const navDbBtn = document.getElementById('navDbBtn');
   const dbBackBtn = document.getElementById('dbBackBtn');
-  if (dbSidebarBtn) dbSidebarBtn.addEventListener('click', () => showView('database'));
+  if (navDbBtn) navDbBtn.addEventListener('click', () => showView('database'));
   if (dbBackBtn) dbBackBtn.addEventListener('click', () => showView(lastViewBeforeSettings));
 
   // Settings
@@ -1600,6 +2706,41 @@ function setupEventListeners() {
   const chatVaultPickerBtn = document.getElementById('chatVaultPickerBtn');
   if (homeVaultPickerBtn) homeVaultPickerBtn.addEventListener('click', () => openVaultPicker('home'));
   if (chatVaultPickerBtn) chatVaultPickerBtn.addEventListener('click', () => openVaultPicker('chat'));
+
+  const newFolderBtn = document.getElementById('newFolderBtn');
+  if (newFolderBtn) newFolderBtn.addEventListener('click', () => createFolder(currentFolderType));
+
+  // Navigation Rail Listeners
+  document.querySelectorAll('.nav-rail-item[data-view]').forEach(item => {
+    item.addEventListener('click', () => {
+      const view = item.dataset.view;
+      if (view === 'chat' && currentMainView === 'chat') {
+        // Toggle sidebar if already in chat view
+        toggleLeftSidebar();
+      } else {
+        showView(view);
+        // Ensure sidebar is visible when switching to chat
+        if (view === 'chat' && leftSidebar.classList.contains('collapsed')) {
+          toggleLeftSidebar();
+        }
+      }
+    });
+  });
+
+  const navSignOutBtn = document.getElementById('navSignOutBtn');
+  if (navSignOutBtn) {
+    navSignOutBtn.addEventListener('click', async () => {
+      if (!window.appAuth) return;
+      await window.appAuth.signOut();
+      allChats = [];
+      currentChatId = null;
+      chatMessages.textContent = '';
+      renderChatHistory();
+      navSignOutBtn.classList.add('hidden');
+      if (userEmailLabel) userEmailLabel.textContent = '';
+      showAuthView();
+    });
+  }
 
   // Setup dropdowns
   setupDropdowns();
@@ -2154,12 +3295,73 @@ function switchToChatView() {
  * Hides the others. When opening settings/database, stores current view for Back.
  */
 function showView(viewName) {
+  console.log('[showView] Switching to:', viewName);
   // If auth flow is still visible for any reason, always dismiss it when switching app views.
   if (authView) {
     authView.classList.add('hidden');
   }
+
+  // Update Navigation Rail active state
+  document.querySelectorAll('.nav-rail-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.view === viewName);
+  });
+
+  // Handle side panel visibility
+  // Keep it visible for home, chat, reports, and jobs
+  const sidebarEnabledViews = ['home', 'chat', 'reports', 'jobs'];
+  const isSidebarEnabled = sidebarEnabledViews.includes(viewName);
+  
   if (leftSidebar) {
-    leftSidebar.classList.remove('hidden');
+    if (!isSidebarEnabled && !leftSidebar.classList.contains('collapsed')) {
+      toggleLeftSidebar();
+    } else if (isSidebarEnabled && leftSidebar.classList.contains('collapsed')) {
+      toggleLeftSidebar();
+    }
+  }
+
+  // Update sidebar content based on view
+  const chatFoldersList = document.getElementById('chatFoldersList');
+  const workflowFoldersList = document.getElementById('workflowFoldersList');
+  const reportFoldersList = document.getElementById('reportFoldersList');
+  const chatHistoryList = document.getElementById('chatHistoryList');
+
+  if (viewName === 'home' || viewName === 'chat') {
+    const titleEl = document.getElementById('sidebarFoldersTitle');
+    if (titleEl) titleEl.textContent = 'Chat Folders';
+    if (chatFoldersList) chatFoldersList.classList.remove('hidden');
+    if (workflowFoldersList) workflowFoldersList.classList.add('hidden');
+    if (reportFoldersList) reportFoldersList.classList.add('hidden');
+    if (chatHistoryList) chatHistoryList.classList.remove('hidden');
+    currentFolderType = 'chat';
+    loadChatFolders();
+  } else if (viewName === 'reports') {
+    const titleEl = document.getElementById('sidebarFoldersTitle');
+    if (titleEl) titleEl.textContent = 'Report Folders';
+    if (chatFoldersList) chatFoldersList.classList.add('hidden');
+    if (workflowFoldersList) workflowFoldersList.classList.add('hidden');
+    if (reportFoldersList) reportFoldersList.classList.remove('hidden');
+    if (chatHistoryList) chatHistoryList.classList.add('hidden');
+    currentFolderType = 'report';
+    loadFolders('report');
+  } else if (viewName === 'jobs') {
+    const titleEl = document.getElementById('sidebarFoldersTitle');
+    console.log('[showView:jobs] titleEl found:', !!titleEl);
+    if (titleEl) {
+        titleEl.textContent = 'Workflow Folders';
+        console.log('[showView:jobs] Set title to Workflow Folders');
+    }
+    if (chatFoldersList) chatFoldersList.classList.add('hidden');
+    if (workflowFoldersList) workflowFoldersList.classList.remove('hidden');
+    if (reportFoldersList) reportFoldersList.classList.add('hidden');
+    if (chatHistoryList) chatHistoryList.classList.add('hidden');
+    currentFolderType = 'job';
+    loadFolders('job');
+  } else {
+    // Hide all lists for other views if sidebar is still open
+    if (chatFoldersList) chatFoldersList.classList.add('hidden');
+    if (workflowFoldersList) workflowFoldersList.classList.add('hidden');
+    if (reportFoldersList) reportFoldersList.classList.add('hidden');
+    if (chatHistoryList) chatHistoryList.classList.add('hidden');
   }
 
   homeView.classList.toggle('hidden', viewName !== 'home');
@@ -4123,7 +5325,9 @@ async function loadSavedReports() {
   if (!container) return;
   try {
     const reports = await window.electronAPI.getSavedReports();
-    const list = Array.isArray(reports) ? reports : (reports.data || []);
+    allReports = Array.isArray(reports) ? reports : (reports.data || []);
+    renderReportFolders();
+    const list = allReports.filter(r => !r.folder_id);
     container.textContent = '';
     if (!list.length) {
       container.textContent = 'No saved reports yet. Create one from a template or build custom.';
@@ -4135,6 +5339,12 @@ async function loadSavedReports() {
       const card = document.createElement('div');
       card.className = 'saved-report-card';
       card.dataset.reportId = r.id;
+      card.draggable = true;
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/report-id', r.id);
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
 
       const info = document.createElement('div');
       info.className = 'saved-report-info';
@@ -4248,7 +5458,7 @@ function openJobForm(job) {
   if (!form) return;
   form.classList.remove('hidden');
   editingJobId = job ? job.id : null;
-  if (formTitle) formTitle.textContent = job ? 'Edit Job' : 'New Job';
+  if (formTitle) formTitle.textContent = job ? 'Edit Workflow' : 'New Workflow';
 
   document.getElementById('jobName').value = job ? job.name : '';
   document.getElementById('jobDescription').value = job ? (job.description || '') : '';
@@ -4388,10 +5598,12 @@ async function loadJobs() {
   if (!container) return;
   try {
     const jobs = await window.electronAPI.getJobs();
-    const list = Array.isArray(jobs) ? jobs : (jobs.data || []);
+    allJobs = Array.isArray(jobs) ? jobs : (jobs.data || []);
+    renderWorkflowFolders();
+    const list = allJobs.filter(j => !j.folder_id);
     container.textContent = '';
     if (!list.length) {
-      container.textContent = 'No scheduled jobs. Click "New Job" to get started.';
+      container.textContent = 'No workflows yet. Click "New Workflow" to get started.';
       return;
     }
     list.forEach(j => {
@@ -4401,6 +5613,12 @@ async function loadJobs() {
       const card = document.createElement('div');
       card.className = 'job-card';
       card.dataset.jobId = j.id;
+      card.draggable = true;
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/job-id', j.id);
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
 
       const header = document.createElement('div');
       header.className = 'job-card-header';
@@ -4459,7 +5677,7 @@ async function loadJobs() {
       delBtn.className = 'btn-sm btn-danger';
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', async () => {
-        if (!confirm('Delete this job?')) return;
+        if (!confirm('Delete this workflow?')) return;
         try { await window.electronAPI.deleteJob(j.id); loadJobs(); } catch (err) { console.error(err); }
       });
 

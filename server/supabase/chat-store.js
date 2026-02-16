@@ -121,6 +121,25 @@ export async function updateChatTitle(chatId, userId, title) {
   return data;
 }
 
+export async function updateChat(chatId, userId, updates) {
+  if (isAnonymousUserId(userId)) return null;
+  const allowedUpdates = {};
+  if (updates.title !== undefined) allowedUpdates.title = updates.title;
+  if (updates.folder_id !== undefined) allowedUpdates.folder_id = updates.folder_id || null;
+  if (updates.metadata !== undefined) allowedUpdates.metadata = updates.metadata;
+
+  const { data, error } = await db()
+    .from('chats')
+    .update(allowedUpdates)
+    .eq('id', chatId)
+    .eq('user_id', userId)
+    .select()
+    .single();
+  
+  if (error) return fallbackForMissingSchema(error, null);
+  return data;
+}
+
 export async function addMessage({ chatId, userId, role, content, html, metadata }) {
   if (isAnonymousUserId(userId)) return null;
   const owner = await getChatOwner(chatId);
