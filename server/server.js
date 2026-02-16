@@ -63,6 +63,31 @@ const allowNullOrigin =
     : process.env.ALLOW_NULL_ORIGIN !== 'false';
 
 let composioSessionCleanupTimer = null;
+let composio = null;
+
+function hasComposioApiKey() {
+  return Boolean(process.env.COMPOSIO_API_KEY && process.env.COMPOSIO_API_KEY.trim());
+}
+
+function ensureComposioClient() {
+  if (!hasComposioApiKey()) {
+    if (composio !== null) {
+      console.log('[COMPOSIO] Disabled: COMPOSIO_API_KEY not configured');
+    }
+    composio = null;
+    return null;
+  }
+  if (composio) return composio;
+  try {
+    composio = new Composio();
+    console.log('[COMPOSIO] Client initialized');
+    return composio;
+  } catch (error) {
+    console.error('[COMPOSIO] Failed to initialize client:', error.message);
+    composio = null;
+    return null;
+  }
+}
 
 function createRateLimiter({ windowMs, maxRequests }) {
   const buckets = new Map();
@@ -211,11 +236,11 @@ function isSafeParamId(value) {
 
 function applyUserSettingsToEnv(settings) {
   const data = settings || {};
-  if (data.apiKeys?.anthropic) process.env.ANTHROPIC_API_KEY = data.apiKeys.anthropic;
-  if (data.apiKeys?.composio) process.env.COMPOSIO_API_KEY = data.apiKeys.composio;
-  if (data.apiKeys?.smithery) process.env.SMITHERY_API_KEY = data.apiKeys.smithery;
-  if (data.apiKeys?.dataforseoUsername) process.env.DATAFORSEO_USERNAME = data.apiKeys.dataforseoUsername;
-  if (data.apiKeys?.dataforseoPassword) process.env.DATAFORSEO_PASSWORD = data.apiKeys.dataforseoPassword;
+  process.env.ANTHROPIC_API_KEY = data.apiKeys?.anthropic || '';
+  process.env.COMPOSIO_API_KEY = data.apiKeys?.composio || '';
+  process.env.SMITHERY_API_KEY = data.apiKeys?.smithery || '';
+  process.env.DATAFORSEO_USERNAME = data.apiKeys?.dataforseoUsername || '';
+  process.env.DATAFORSEO_PASSWORD = data.apiKeys?.dataforseoPassword || '';
 }
 
 function scheduleComposioSessionCleanup() {
@@ -280,8 +305,8 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 let isShuttingDown = false;
 
-// Initialize Composio (uses process.env.COMPOSIO_API_KEY)
-const composio = new Composio();
+// Initialize Composio lazily (optional unless COMPOSIO_API_KEY is configured).
+ensureComposioClient();
 
 const composioSessions = new Map();
 let defaultComposioSession = null;
@@ -392,10 +417,15 @@ async function getSmitheryMcpConfig() {
 
 // Pre-initialize Composio session on startup
 async function initializeComposioSession() {
+  const composioClient = ensureComposioClient();
+  if (!composioClient) {
+    console.log('[COMPOSIO] Pre-initialization skipped (no API key)');
+    return;
+  }
   const defaultUserId = 'default-user';
   console.log('[COMPOSIO] Pre-initializing session for:', defaultUserId);
   try {
-    defaultComposioSession = await composio.create(defaultUserId);
+    defaultComposioSession = await composioClient.create(defaultUserId);
     setComposioSession(defaultUserId, defaultComposioSession);
     console.log('[COMPOSIO] Session ready with MCP URL:', defaultComposioSession.mcp.url);
   } catch (error) {
@@ -455,13 +485,15 @@ function initializeDataforseoConfig() {
  * Merges Composio (from session), Smithery (when key and connection exist), and user-defined MCP from user-settings.
  */
 function buildMcpServers(composioSession) {
-  const mcpServers = {
-    composio: {
+  const mcpServers = {};
+
+  if (composioSession?.mcp?.url && composioSession?.mcp?.headers) {
+    mcpServers.composio = {
       type: 'http',
       url: composioSession.mcp.url,
       headers: composioSession.mcp.headers
-    }
-  };
+    };
+  }
 
   if (defaultSmitheryMcpConfig) {
     mcpServers.smithery = {
@@ -1484,14 +1516,18 @@ app.post('/api/chat', requireAuth, rateLimit.chat, async (req, res) => {
         }
       }
 
-    // Get or create Composio session for this user
-    let composioSession = getComposioSession(userId);
-    if (!composioSession) {
-      console.log('[COMPOSIO] Creating new session for user:', userId);
-      res.write(`data: ${JSON.stringify({ type: 'status', message: 'Initializing session...' })}\n\n`);
-      composioSession = await composio.create(userId);
-      setComposioSession(userId, composioSession);
-      console.log('[COMPOSIO] Session created with MCP URL:', composioSession.mcp.url);
+    // Get or create Composio session for this user (optional).
+    const composioClient = ensureComposioClient();
+    let composioSession = null;
+    if (composioClient) {
+      composioSession = getComposioSession(userId);
+      if (!composioSession) {
+        console.log('[COMPOSIO] Creating new session for user:', userId);
+        res.write(`data: ${JSON.stringify({ type: 'status', message: 'Initializing session...' })}\n\n`);
+        composioSession = await composioClient.create(userId);
+        setComposioSession(userId, composioSession);
+        console.log('[COMPOSIO] Session created with MCP URL:', composioSession.mcp.url);
+      }
     }
 
     // Ensure Smithery connection is ready when key is set (populates defaultSmitheryMcpConfig)
@@ -1860,14 +1896,15 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
     }
 
     // Apply API keys to process.env for next requests
-    if (data.apiKeys.anthropic) process.env.ANTHROPIC_API_KEY = data.apiKeys.anthropic;
-    if (data.apiKeys.composio) process.env.COMPOSIO_API_KEY = data.apiKeys.composio;
-    if (data.apiKeys.smithery) process.env.SMITHERY_API_KEY = data.apiKeys.smithery;
-    if (data.apiKeys.dataforseoUsername) process.env.DATAFORSEO_USERNAME = data.apiKeys.dataforseoUsername;
-    if (data.apiKeys.dataforseoPassword) process.env.DATAFORSEO_PASSWORD = data.apiKeys.dataforseoPassword;
+    process.env.ANTHROPIC_API_KEY = data.apiKeys.anthropic || '';
+    process.env.COMPOSIO_API_KEY = data.apiKeys.composio || '';
+    process.env.SMITHERY_API_KEY = data.apiKeys.smithery || '';
+    process.env.DATAFORSEO_USERNAME = data.apiKeys.dataforseoUsername || '';
+    process.env.DATAFORSEO_PASSWORD = data.apiKeys.dataforseoPassword || '';
     if (prevComposioKey !== data.apiKeys.composio) {
       composioSessions.clear();
       defaultComposioSession = null;
+      ensureComposioClient();
       console.log('[SETTINGS] Composio key changed; cleared sessions');
     }
     if (prevSmitheryKey !== data.apiKeys.smithery) {
