@@ -311,12 +311,24 @@ if (fs.existsSync(rendererPath) && fs.existsSync(rendererIndexPath)) {
   app.get('/', (_req, res) => res.sendFile(rendererIndexPath));
 }
 
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    providers: getAvailableProviders()
+  });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     providers: getAvailableProviders()
   });
+});
+
+app.get('/favicon.ico', (_req, res) => {
+  res.status(204).send();
 });
 
 // Initialize Composio lazily (optional unless COMPOSIO_API_KEY is configured).
