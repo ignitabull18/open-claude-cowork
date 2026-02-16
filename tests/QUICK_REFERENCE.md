@@ -21,7 +21,7 @@ npm run test:renderer         # Frontend tests only
 
 ## 📊 Test Statistics
 
-- **Total Smoke Tests**: 29
+- **Total Smoke Tests**: 36
 - **Browser Coverage**: 5 (Chrome, Firefox, Safari, Mobile Chrome, Mobile Safari)
 - **Test Execution Time**: ~2-3 minutes
 - **Pass Rate**: ~75% (with known issues documented)

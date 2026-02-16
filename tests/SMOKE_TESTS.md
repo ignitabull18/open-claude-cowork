@@ -8,13 +8,14 @@ Smoke tests are a subset of test cases that cover the most critical functionalit
 
 ## Test Coverage
 
-The smoke test suite (`smoke.spec.js`) covers **29 comprehensive tests** organized into 5 test suites:
+The smoke test suite (`smoke.spec.js`) currently covers **36 tests** organized into **5 suites**:
 
-### Core Functionality (19 tests)
+### Core Functionality
 - ✅ Application loads successfully with proper title and main container
 - ✅ Home view displays greeting and tagline
 - ✅ Chat interface elements (message input, send button, attach, vault, thinking buttons)
 - ✅ Provider and model dropdown menus (Claude, Opus, Sonnet, Haiku)
+- ✅ API endpoint dependency health checks for tasks/jobs/reports/chats/vault
 - ✅ Settings panel navigation (open and back)
 - ✅ Message input handling and send button state management
 - ✅ Left sidebar with all navigation buttons

@@ -2,6 +2,10 @@
 
 This document covers this fork’s setup, how to run the app locally, how to deploy it on Coolify, and what still needs to be done.
 
+## Repository rules index
+
+Before making setup/deploy or environment changes, check `AGENTS.md` for current repository-wide rules and workflow constraints.
+
 ---
 
 ## Repository & fork

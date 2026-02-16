@@ -8,7 +8,7 @@ This directory contains the comprehensive test suite for **Open Claude Cowork**,
 
 ```
 tests/
-├── smoke.spec.js           # Playwright E2E smoke tests (29 tests)
+├── smoke.spec.js           # Playwright E2E smoke tests (36 tests)
 ├── SMOKE_TESTS.md          # Comprehensive smoke test documentation
 ├── README.md               # This file
 ├── fixtures/               # Test fixtures and sample data
@@ -25,13 +25,13 @@ tests/
 
 ## Test Categories
 
-### 1. Smoke Tests (E2E) - 29 tests
+### 1. Smoke Tests (E2E) - 36 tests
 **File**: `smoke.spec.js`
 **Framework**: Playwright
 **Purpose**: Verify critical application functionality across browsers
 
 **Coverage**:
-- Core application functionality (19 tests)
+- Core application functionality (including provider/model controls, navigation, and primary interactions)
 - Responsive design (3 tests)
 - Accessibility (3 tests)
 - Error handling (2 tests)

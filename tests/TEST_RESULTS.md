@@ -2,8 +2,8 @@
 
 ## Test Execution Summary
 
-**Date**: February 15, 2026
-**Total Tests**: 175 (29 tests × 5 browsers + mobile)
+**Date**: February 15, 2026 (historical snapshot)
+**Total Tests**: Historical snapshot (counts were current at the time this snapshot was taken). For current test counts, see `tests/README.md` and `tests/SMOKE_TESTS.md`.
 **Framework**: Playwright v1.58.2
 **Base URL**: http://localhost:3001
 
@@ -174,7 +174,7 @@ npm run test:e2e:debug
 
 ## Conclusion
 
-The smoke test suite successfully validates that **Open Claude Cowork's core functionality is working as expected**. With 29 comprehensive tests covering navigation, UI elements, responsive design, accessibility, error handling, and performance, we have a solid foundation for continuous integration.
+The smoke test suite successfully validates that **Open Claude Cowork's core functionality is working as expected** (for this February 15, 2026 snapshot). With 29 comprehensive tests covering navigation, UI elements, responsive design, accessibility, error handling, and performance, we have a solid foundation for continuous integration.
 
 **Overall Health**: 🟢 **Good** (75% pass rate with known issues documented)
 

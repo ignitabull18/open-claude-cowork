@@ -33,8 +33,8 @@
 <p align="center">
   <i>Pst. hey, you, join our stargazers :)</i>
   <br>
-  <a href="https://github.com/ComposioHQ/open-claude-cowork">
-    <img src="https://img.shields.io/github/stars/ComposioHQ/open-claude-cowork.svg?style=social&label=Star&maxAge=2592000" alt="GitHub stars">
+  <a href="https://github.com/ignitabull18/open-claude-cowork">
+    <img src="https://img.shields.io/github/stars/ignitabull18/open-claude-cowork.svg?style=social&label=Star&maxAge=2592000" alt="GitHub stars">
   </a>
 </p>
 
@@ -59,12 +59,18 @@ Both include **500+ app integrations** via Composio (Gmail, Slack, GitHub, Googl
 ### Open Claude Cowork
 
 ```bash
-git clone https://github.com/ComposioHQ/open-claude-cowork.git
+git clone https://github.com/ignitabull18/open-claude-cowork.git
 cd open-claude-cowork
 ./setup.sh
 ```
 
-Then run in two terminals:
+Run from the repo root:
+
+```bash
+npm run start:all
+```
+
+Or in two terminals (legacy flow):
 ```bash
 # Terminal 1
 cd server && npm start

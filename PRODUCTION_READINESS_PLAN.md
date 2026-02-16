@@ -11,7 +11,7 @@ This document outlines a structured plan to analyze **Open Claude Cowork** for p
 | **Desktop app** | Electron main/preload + renderer (vanilla JS) |
 | **Backend** | Express server (ESM), Supabase, providers, MCP, plugins |
 | **Clawd** | Messaging bot (separate entry point; optional for “desktop app” production) |
-| **Tests** | Vitest (unit + integration); e2e excluded |
+| **Tests** | Vitest (unit + integration) + Playwright E2E |
 
 The plan is ordered by priority and dependency where it matters.
 
@@ -23,14 +23,13 @@ These were spotted during exploration; confirm and fix as part of the analysis.
 
 ### 2.1 UI / Frontend bugs
 
-- **Folder instructions Save/Cancel IDs**
-  - **Issue:** `renderer.js` uses `getElementById('settingsFolderSaveBtn')` and `getElementById('settingsFolderCancelBtn')`, but `index.html` defines `id="settingsFolderInstructionSaveBtn"` and `id="settingsFolderInstructionCancelBtn"`.
-  - **Effect:** Folder instruction save/cancel buttons do nothing (handlers attach to `null`).
-  - **Action:** Align IDs: either rename in HTML to match JS or in JS to match HTML, then re-test Settings → Instructions → Add folder instruction → Save/Cancel.
+- [x] **Folder instructions Save/Cancel IDs**
+  - **Issue:** `renderer.js` originally used `getElementById('settingsFolderSaveBtn')` and `getElementById('settingsFolderCancelBtn')`, while `index.html` used `settingsFolderInstructionSaveBtn` / `settingsFolderInstructionCancelBtn`.
+  - **Status:** Fixed. Handlers now correctly bind to the folder instruction IDs in both files.
 
 ### 2.2 Documentation vs reality
 
-- **CLAUDE.md** says “No test framework configured” but the repo uses Vitest (`npm test`, `vitest.config.js`). Update CLAUDE.md to describe Vitest and test commands.
+- [x] **CLAUDE.md** now documents the active test stack (`npm test` with Vitest) and current test commands.
 
 ---
 
@@ -163,8 +162,8 @@ These were spotted during exploration; confirm and fix as part of the analysis.
   - Run `npm run test:coverage` and list critical paths with no or low coverage (e.g. chat stream, permission flow, vault upload, report run).
 - [ ] **Integration**
   - Key flows covered: auth, chat send/stream, settings load/save, reports/jobs/vault CRUD where applicable.
-- [ ] **E2E**
-  - Vitest excludes `tests/e2e`. If production implies E2E, add a small set (e.g. login → send message → see response) with Playwright or Electron test runner.
+- [x] **E2E**
+  - Playwright E2E is already in scope via `tests/smoke.spec.js`, `tests/critical-user-journeys.spec.js`, and `npm run test:e2e*` scripts.
 
 ### 6.2 Observability and operations
 
@@ -189,8 +188,8 @@ These were spotted during exploration; confirm and fix as part of the analysis.
 ## 7. Suggested Order of Execution
 
 1. **Quick wins**
-   - Fix folder-instruction button IDs (Section 2.1).
-   - Update CLAUDE.md about Vitest (Section 2.2).
+   - [x] Fix folder-instruction button IDs (Section 2.1).
+   - [x] Update CLAUDE.md about Vitest (Section 2.2).
 2. **Correctness**
    - Server error handling and input validation (Section 3.1); renderer null-safety and API errors (Section 3.2); preload/Electron (Section 3.3).
 3. **Security**
