@@ -304,6 +304,12 @@ applyUserSettingsToEnv(readUserSettingsFile({ force: true }));
 const app = express();
 const PORT = process.env.PORT || 3001;
 let isShuttingDown = false;
+const rendererPath = path.join(__dirname, '..', 'renderer');
+const rendererIndexPath = path.join(rendererPath, 'index.html');
+
+if (fs.existsSync(rendererPath) && fs.existsSync(rendererIndexPath)) {
+  app.get('/', (_req, res) => res.sendFile(rendererIndexPath));
+}
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -2145,10 +2151,8 @@ app.use('/api', (_req, res) => {
 });
 
 // Serve web UI (renderer) for browser deployment (e.g. Coolify)
-const rendererPath = path.join(__dirname, '..', 'renderer');
 if (fs.existsSync(rendererPath)) {
   app.use(express.static(rendererPath));
-  app.get('/', (_req, res) => res.sendFile(path.join(rendererPath, 'index.html')));
 }
 
 if (process.env.NODE_ENV !== 'test') {
