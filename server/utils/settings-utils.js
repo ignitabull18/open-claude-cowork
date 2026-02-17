@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Correctly locate user-settings.json relative to this utility file
+// Correctly locate user-settings.json relative to this utility file.
 const USER_SETTINGS_PATH = path.join(__dirname, '..', 'user-settings.json');
 const USER_SETTINGS_CACHE_TTL_MS = 5000;
 
@@ -21,7 +21,8 @@ export function cloneSettings(data) {
 }
 
 export function getUserSettingsPath() {
-  const resolved = path.resolve(USER_SETTINGS_PATH);
+  const candidatePath = process.env.USER_SETTINGS_PATH || USER_SETTINGS_PATH;
+  const resolved = path.resolve(candidatePath);
   const baseDir = path.resolve(path.dirname(resolved));
   if (isSecureMode() && !resolved.startsWith(baseDir + path.sep)) {
     throw new Error('Invalid user settings path');

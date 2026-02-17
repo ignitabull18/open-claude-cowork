@@ -68,6 +68,21 @@ The smoke test suite (`smoke.spec.js`) currently covers **36 tests** organized i
 npm run test:smoke
 ```
 
+### Deployment smoke check
+
+Use this lightweight check for deployed environments:
+
+```bash
+DEPLOY_SMOKE_URL=https://your-deployment.example.com npm run test:smoke:deployed
+```
+
+It validates:
+
+- Homepage loads
+- `GET /api/health`, `GET /api/config`
+- Supabase anon key health against `/auth/v1/health`
+- Protected API routes return auth-gated `401` responses where expected
+
 ### Run all E2E tests (including smoke):
 ```bash
 npm run test:e2e

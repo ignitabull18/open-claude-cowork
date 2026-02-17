@@ -11,6 +11,7 @@ function normalizeJobType(jobType) {
 
 function normalizeActionType(actionType) {
   if (actionType === 'report') return 'report_generation';
+  if (actionType === 'workflow') return 'run_workflow';
   return actionType;
 }
 

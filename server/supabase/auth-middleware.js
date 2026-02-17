@@ -36,6 +36,34 @@ function getBearerToken(req) {
   return bearerMatch[1];
 }
 
+function normalizeSupabaseUrl(url) {
+  return (url || '').replace(/\/$/, '');
+}
+
+async function verifyTokenWithSupabaseUserEndpoint(token) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+
+  try {
+    const response = await fetch(`${normalizeSupabaseUrl(supabaseUrl)}/auth/v1/user`, {
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) return null;
+
+    const authUser = await response.json();
+    if (!authUser || !authUser.id || !authUser.email) return null;
+
+    return { id: authUser.id, email: authUser.email, role: authUser.role || 'authenticated' };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Express middleware that validates a Supabase JWT from the Authorization header.
  * Sets req.user = { id, email, role } on success.
@@ -46,6 +74,12 @@ export async function requireAuth(req, res, next) {
 
   if (token) {
     try {
+      const directUser = await verifyTokenWithSupabaseUserEndpoint(token);
+      if (directUser) {
+        req.user = directUser;
+        return next();
+      }
+
       const userClient = getUserClient(token);
       const { data: { user: authUser }, error: userError } = await userClient.auth.getUser(token);
       if (authUser && !userError) {

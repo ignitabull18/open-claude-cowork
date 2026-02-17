@@ -14,6 +14,11 @@ export function buildSystemPrompt(chatMetadata = {}) {
     parts.push(`## Project Context\nName: ${project.name || 'Untitled'}\nGoal: ${project.desc || 'Not specified'}`);
   }
 
+  // Snapshot instructions (e.g. from workflow context refs or chat metadata)
+  if (chatMetadata.instructions && String(chatMetadata.instructions).trim()) {
+    parts.push('## Project Instructions\n' + String(chatMetadata.instructions).trim());
+  }
+
   if (instructions.global && instructions.global.trim()) {
     parts.push('## User Instructions\n' + instructions.global.trim());
   }
@@ -88,4 +93,70 @@ export async function fetchDirectExternalContext(metadata, composioSession) {
   }
 
   return parts.length > 0 ? '## Pinned External Resources\n' + parts.join('\n\n') : '';
+}
+
+const WEB_SOURCE_TIMEOUT_MS = 15_000;
+const WEB_SOURCE_MAX_CHARS_PER_URL = 80_000;
+const WEB_SOURCE_MAX_TOTAL_CHARS = 200_000;
+
+/**
+ * Fetch content from web source URLs (fresh each run). Used for workflow context replay.
+ */
+export async function fetchWebSourcesContext(webSources = []) {
+  if (!Array.isArray(webSources) || webSources.length === 0) return '';
+  const parts = [];
+  let totalChars = 0;
+  for (const url of webSources) {
+    if (totalChars >= WEB_SOURCE_MAX_TOTAL_CHARS) break;
+    const u = typeof url === 'string' ? url.trim() : '';
+    if (!u || !/^https?:\/\//i.test(u)) continue;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), WEB_SOURCE_TIMEOUT_MS);
+      const res = await fetch(u, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'OpenClaudeCowork/1.0 (Workflow context)' }
+      });
+      clearTimeout(timeout);
+      if (!res.ok) continue;
+      const contentType = (res.headers.get('content-type') || '').toLowerCase();
+      let text = await res.text();
+      if (text.length > WEB_SOURCE_MAX_CHARS_PER_URL) {
+        text = text.slice(0, WEB_SOURCE_MAX_CHARS_PER_URL) + '\n[... truncated]';
+      }
+      const safe = text.replace(/\s+/g, ' ').trim();
+      if (safe.length > 0) {
+        parts.push(`### Web: ${u}\n${safe}`);
+        totalChars += safe.length;
+      }
+    } catch (err) {
+      console.warn('[CONTEXT] Web source fetch failed:', u, err.message);
+    }
+  }
+  return parts.length > 0 ? '## Web Sources (fetched this run)\n' + parts.join('\n\n') : '';
+}
+
+/**
+ * Build system prompt for workflow run: resolve context refs (URLs + integrations)
+ * and append workflow blueprint.
+ */
+export async function buildWorkflowSystemPrompt(workflow, composioSession) {
+  const metadata = { ...(workflow.context_refs_json || {}) };
+  const [externalContent, webContent] = await Promise.all([
+    fetchDirectExternalContext(metadata, composioSession),
+    fetchWebSourcesContext(metadata.webSources || [])
+  ]);
+  const combined = [externalContent, webContent].filter(Boolean).join('\n\n');
+  if (combined) metadata.externalContent = combined;
+  let prompt = buildSystemPrompt(metadata);
+  const blueprint = workflow.blueprint_json || {};
+  const steps = blueprint.todos || [];
+  const toolCalls = blueprint.toolCalls || [];
+  const blueprintText = [
+    '## Workflow Blueprint',
+    'Execute the following steps and tool sequence. Use the same tools and order where applicable.',
+    steps.length ? '### Steps\n' + steps.map((s, i) => `${i + 1}. ${s.content || s.activeForm || '(step)'}`).join('\n') : '',
+    toolCalls.length ? '### Tool sequence\n' + toolCalls.map(t => `- ${t.name}`).join('\n') : ''
+  ].filter(Boolean).join('\n\n');
+  return prompt ? prompt + '\n\n' + blueprintText : blueprintText;
 }

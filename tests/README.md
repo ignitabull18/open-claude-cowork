@@ -90,6 +90,7 @@ npm run test:e2e           # All E2E tests
 
 # Run specific suites
 npm run test:smoke         # Smoke tests only
+npm run test:smoke:deployed # Deployment smoke check for live URL
 npm run test:server        # Server tests only
 npm run test:renderer      # Frontend tests only
 

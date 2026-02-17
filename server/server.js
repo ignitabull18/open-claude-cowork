@@ -14,16 +14,21 @@ import { getPublicConfig } from './supabase/client.js';
 import * as chatStore from './supabase/chat-store.js';
 import * as sessionStore from './supabase/session-store.js';
 import * as storage from './supabase/storage.js';
+import { isSchemaMissingError } from './supabase/supabase-schema-guard.js';
 import { searchSimilar, embedMessage, embedAttachment } from './supabase/embeddings.js';
 import { setupCronJobs, startEmbeddingCron } from './supabase/cron.js';
 import * as reportStore from './supabase/report-store.js';
 import * as jobStore from './supabase/job-store.js';
+import * as workflowStore from './supabase/workflow-store.js';
 import * as taskStore from './supabase/task-store.js';
 import * as vaultStore from './supabase/vault-store.js';
 import * as folderStore from './supabase/folder-store.js';
 import { startScheduler, triggerJob, stopScheduler } from './job-scheduler.js';
+import * as composioSessionStore from './composio-session-store.js';
 import { BrowserServer, createBrowserMcpServer } from './browser/index.js';
 import { createDocumentMcpServer } from './documents/index.js';
+import { createSkillsMcpServer } from './mcp/skills.js';
+import { getSystemPromptAdditions as getUserSkillsPrompt } from './managers/user-skills-manager.js';
 import { PluginManager } from './plugins/plugin-manager.js';
 import crypto from 'crypto';
 import {
@@ -33,14 +38,14 @@ import {
   cloneSettings,
   isSecureMode
 } from './utils/settings-utils.js';
-import { buildSystemPrompt, fetchDirectExternalContext } from './utils/prompt-utils.js';
+import { buildSystemPrompt, buildWorkflowSystemPrompt, fetchDirectExternalContext } from './utils/prompt-utils.js';
+import { listIntegrationItems } from './utils/context-integrations-list.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-const USER_SETTINGS_PATH = path.join(__dirname, 'user-settings.json');
 const USER_SETTINGS_CACHE_TTL_MS = Math.max(1_000, Number(process.env.USER_SETTINGS_CACHE_MS || 5_000));
 const USER_SETTINGS_FILE_MODE = 0o600;
 const COMPOSIO_SESSION_TTL_MS = Math.max(60_000, Number(process.env.COMPOSIO_SESSION_TTL_MS || 30 * 60 * 1000));
@@ -126,6 +131,10 @@ function sendInternalError(res, err) {
     console.error('[SERVER] Internal error:', err.message || String(err));
   }
   return res.status(500).json({ error: 'Internal server error' });
+}
+
+function missingSchemaMessage(resourceLabel) {
+  return `${resourceLabel} are not available. Required database table/migration may be missing.`;
 }
 
 function getComposioSession(userId) {
@@ -263,22 +272,40 @@ async function assertChatOwnedByUser(chatId, userId) {
 
 /** Save user-settings to disk. */
 function saveUserSettings(data) {
-  const dir = path.dirname(USER_SETTINGS_PATH);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
   const normalized = normalizeUserSettings(data);
-  fs.writeFileSync(
-    USER_SETTINGS_PATH,
-    JSON.stringify(normalized, null, 2),
-    { encoding: 'utf8', mode: USER_SETTINGS_FILE_MODE }
-  );
-  try {
-    fs.chmodSync(USER_SETTINGS_PATH, USER_SETTINGS_FILE_MODE);
-  } catch (_) {
-    // Ignore if chmod is unsupported in the environment.
+  const configuredPath = getUserSettingsPath();
+  const fallbackPath = path.join(os.tmpdir(), 'open-claude-cowork-user-settings.json');
+  const candidates = [configuredPath, fallbackPath].filter((p, idx, arr) => arr.indexOf(p) === idx);
+  let lastError = null;
+
+  for (const settingsPath of candidates) {
+    try {
+      const dir = path.dirname(settingsPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      }
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify(normalized, null, 2),
+        { encoding: 'utf8', mode: USER_SETTINGS_FILE_MODE }
+      );
+      try {
+        fs.chmodSync(settingsPath, USER_SETTINGS_FILE_MODE);
+      } catch (_) {
+        // Ignore if chmod is unsupported in the environment.
+      }
+      if (settingsPath !== configuredPath) {
+        process.env.USER_SETTINGS_PATH = settingsPath;
+      }
+      clearUserSettingsCache();
+      return settingsPath;
+    } catch (err) {
+      lastError = err;
+    }
   }
-  clearUserSettingsCache();
+
+  if (lastError) throw lastError;
+  throw new Error('Unable to persist user settings');
 }
 
 /** Mask API key for safe response (last 4 chars or null). */
@@ -364,6 +391,9 @@ const BROWSER_TOOL_NAMES = [
 
 // Document generation module state
 let documentMcpServer = null;
+
+// User skills (workflows) MCP — created at load, no config
+const skillsMcpServer = createSkillsMcpServer();
 
 // Plugin system
 let pluginManager = null;
@@ -544,6 +574,11 @@ function buildMcpServers(composioSession) {
     mcpServers.documents = documentMcpServer;
   }
 
+  // Add user skills MCP server (create/read/update/delete saved workflows)
+  if (skillsMcpServer) {
+    mcpServers.skills = skillsMcpServer;
+  }
+
   // Add DataForSEO MCP servers (official 9-API + custom 4-API)
   const dfsConfig = getDataforseoMcpConfig();
   if (dfsConfig) {
@@ -642,6 +677,9 @@ app.post('/api/chats', requireAuth, rateLimit.reports, async (req, res) => {
       return res.status(400).json({ error: 'Invalid chatId' });
     }
     const chat = await chatStore.createChat({ id, userId: req.user.id, title, provider, model });
+    if (!chat) {
+      return res.status(501).json({ error: missingSchemaMessage('Chats') });
+    }
     res.json(chat);
   } catch (err) {
     console.error('[CHATS] Create error:', err);
@@ -683,6 +721,9 @@ app.post('/api/messages', requireAuth, rateLimit.reports, async (req, res) => {
       return res.status(400).json({ error: 'Invalid chatId' });
     }
     const msg = await chatStore.addMessage({ chatId, userId: req.user.id, role, content, html, metadata });
+    if (!msg) {
+      return res.status(501).json({ error: missingSchemaMessage('Messages') });
+    }
     res.json(msg);
   } catch (err) {
     console.error('[MESSAGES] Create error:', err);
@@ -721,12 +762,18 @@ app.post('/api/upload', requireAuth, rateLimit.upload, upload.single('file'), as
   try {
     const chatId = req.body.chatId || null;
     const attachment = await storage.uploadFile(req.user.id, req.file, chatId);
+    if (!attachment) {
+      return res.status(501).json({ error: missingSchemaMessage('Attachments') });
+    }
     // Tag chat-originated uploads so they appear in the vault
     if (chatId && attachment.id) {
       try { await vaultStore.updateAsset(attachment.id, req.user.id, { source: 'chat' }); } catch (_) {}
     }
     res.json(attachment);
   } catch (err) {
+    if (isSchemaMissingError(err)) {
+      return res.status(501).json({ error: missingSchemaMessage('File storage') });
+    }
     console.error('[UPLOAD] Error:', err);
     sendInternalError(res, err);
   }
@@ -765,6 +812,9 @@ app.post('/api/vault/folders', requireAuth, rateLimit.vault, async (req, res) =>
   if (!name) return res.status(400).json({ error: 'name is required' });
   try {
     const folder = await vaultStore.createFolder(req.user.id, name, parentId || null);
+    if (!folder) {
+      return res.status(501).json({ error: missingSchemaMessage('Vault folders') });
+    }
     res.json(folder);
   } catch (err) {
     console.error('[VAULT] Create folder error:', err);
@@ -840,6 +890,9 @@ app.post('/api/vault/assets/upload', requireAuth, rateLimit.vault, upload.single
     const folderId = req.body.folderId || null;
     const source = req.body.source || 'upload';
     const attachment = await storage.uploadVaultFile(req.user.id, req.file, folderId, source);
+    if (!attachment) {
+      return res.status(501).json({ error: missingSchemaMessage('Attachments') });
+    }
     res.json(attachment);
 
     // Embed text-based files for semantic search (non-blocking)
@@ -853,6 +906,9 @@ app.post('/api/vault/assets/upload', requireAuth, rateLimit.vault, upload.single
       }
     }
   } catch (err) {
+    if (isSchemaMissingError(err)) {
+      return res.status(501).json({ error: missingSchemaMessage('File storage') });
+    }
     console.error('[VAULT] Upload error:', err);
     sendInternalError(res, err);
   }
@@ -941,6 +997,9 @@ app.post('/api/folders', requireAuth, async (req, res) => {
     const { name, type, parentId } = req.body;
     if (!name || !type) return res.status(400).json({ error: 'name and type are required' });
     const folder = await folderStore.createFolder(req.user.id, name, type, parentId);
+    if (!folder) {
+      return res.status(501).json({ error: missingSchemaMessage('Folders') });
+    }
     res.json(folder);
   } catch (err) {
     console.error('[FOLDERS] Create error:', err);
@@ -1005,10 +1064,51 @@ app.post('/api/search', requireAuth, rateLimit.search, async (req, res) => {
 });
 
 // ==================== DATABASE EXPLORER ENDPOINTS ====================
-// Access check — only needs requireAuth (returns boolean, does not expose data)
+/** Parse Supabase project ref from SUPABASE_URL (e.g. https://abc123.supabase.co -> abc123). */
+function getSupabaseProjectRef() {
+  const url = process.env.SUPABASE_URL;
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname.toLowerCase();
+    if (host.endsWith('.supabase.co')) {
+      const sub = host.slice(0, -'.supabase.co'.length);
+      return sub || null;
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Access check — returns allowed + connection metadata for UI (project ref, dashboard link)
 app.get('/api/database/access', requireAuth, (req, res) => {
-  if (!isSupabaseConfigured()) return res.json({ allowed: false });
-  res.json({ allowed: isAdmin(req.user?.email) });
+  const configured = isSupabaseConfigured();
+  const supabaseUrl = (process.env.SUPABASE_URL || '').trim() || null;
+  const projectRef = getSupabaseProjectRef();
+  const dashboardUrl = projectRef
+    ? `https://supabase.com/dashboard/project/${projectRef}`
+    : null;
+  const databaseName = 'postgres'; // Supabase uses single default DB per project
+
+  if (!configured) {
+    return res.json({
+      allowed: false,
+      configured: false,
+      supabaseUrl: null,
+      projectRef: null,
+      dashboardUrl: null,
+      databaseName: null
+    });
+  }
+  res.json({
+    allowed: isAdmin(req.user?.email),
+    configured: true,
+    supabaseUrl,
+    projectRef,
+    dashboardUrl,
+    databaseName
+  });
 });
 
 // List all tables with stats
@@ -1161,6 +1261,9 @@ app.post('/api/reports/saved', requireAuth, rateLimit.reports, async (req, res) 
     const { name, description, reportConfig } = req.body;
     if (!name || !reportConfig) return res.status(400).json({ error: 'name and reportConfig are required' });
     const report = await reportStore.createSavedReport(req.user.id, { name, description, reportConfig });
+    if (!report) {
+      return res.status(501).json({ error: 'Saved reports are not available. Required database table/migration may be missing.' });
+    }
     res.json(report);
   } catch (err) {
     console.error('[REPORTS] Create saved error:', err);
@@ -1234,6 +1337,9 @@ app.post('/api/jobs', requireAuth, rateLimit.jobs, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Jobs require Supabase' });
   try {
     const job = await jobStore.createJob(req.user.id, req.body);
+    if (!job) {
+      return res.status(501).json({ error: 'Jobs are not available. Required database table/migration may be missing.' });
+    }
     res.json(job);
   } catch (err) {
     console.error('[JOBS] Create error:', err);
@@ -1300,6 +1406,119 @@ app.post('/api/jobs/:jobId/run', requireAuth, rateLimit.jobs, async (req, res) =
   }
 });
 
+// ==================== WORKFLOWS (BLUEPRINT) ENDPOINTS ====================
+app.post('/api/workflows', requireAuth, rateLimit.jobs, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Workflows require Supabase' });
+  try {
+    const { name, description, sourceChatId, blueprintJson, contextRefsJson } = req.body;
+    const workflow = await workflowStore.createWorkflow(req.user.id, {
+      name: name || 'Untitled workflow',
+      description: description ?? '',
+      sourceChatId: sourceChatId || null,
+      blueprintJson: blueprintJson ?? {},
+      contextRefsJson: contextRefsJson ?? {}
+    });
+    if (!workflow) {
+      return res.status(501).json({ error: missingSchemaMessage('Workflows') });
+    }
+    res.status(201).json(workflow);
+  } catch (err) {
+    console.error('[WORKFLOWS] Create error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+app.get('/api/workflows', requireAuth, rateLimit.jobs, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Workflows require Supabase' });
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const workflows = await workflowStore.getUserWorkflows(req.user.id, { limit });
+    res.json({ workflows });
+  } catch (err) {
+    console.error('[WORKFLOWS] List error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+app.get('/api/workflows/:id', requireAuth, rateLimit.jobs, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Workflows require Supabase' });
+  try {
+    if (!isSafeParamId(req.params.id)) return res.status(400).json({ error: 'Invalid workflow id' });
+    const workflow = await workflowStore.getWorkflow(req.params.id, req.user.id);
+    if (!workflow) return res.status(404).json({ error: 'Workflow not found' });
+    res.json(workflow);
+  } catch (err) {
+    console.error('[WORKFLOWS] Get error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+app.patch('/api/workflows/:id', requireAuth, rateLimit.jobs, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Workflows require Supabase' });
+  try {
+    if (!isSafeParamId(req.params.id)) return res.status(400).json({ error: 'Invalid workflow id' });
+    const { name, description, blueprintJson, contextRefsJson, status } = req.body;
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+    if (blueprintJson !== undefined) updates.blueprintJson = blueprintJson;
+    if (contextRefsJson !== undefined) updates.contextRefsJson = contextRefsJson;
+    if (status !== undefined) updates.status = status;
+    const workflow = await workflowStore.updateWorkflow(req.params.id, req.user.id, updates);
+    if (!workflow) return res.status(404).json({ error: 'Workflow not found' });
+    res.json(workflow);
+  } catch (err) {
+    console.error('[WORKFLOWS] Update error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+app.delete('/api/workflows/:id', requireAuth, rateLimit.jobs, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Workflows require Supabase' });
+  try {
+    if (!isSafeParamId(req.params.id)) return res.status(400).json({ error: 'Invalid workflow id' });
+    await workflowStore.deleteWorkflow(req.params.id, req.user.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[WORKFLOWS] Delete error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+app.post('/api/workflows/:id/run', requireAuth, rateLimit.jobs, async (req, res) => {
+  if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Workflows require Supabase' });
+  try {
+    if (!isSafeParamId(req.params.id)) return res.status(400).json({ error: 'Invalid workflow id' });
+    const workflow = await workflowStore.getWorkflow(req.params.id, req.user.id);
+    if (!workflow) return res.status(404).json({ error: 'Workflow not found' });
+
+    const userId = req.user.id;
+    let composioSession = getComposioSession(userId);
+    if (!composioSession && ensureComposioClient()) {
+      composioSession = await ensureComposioClient().create(userId);
+      setComposioSession(userId, composioSession);
+    }
+    const mcpServers = buildMcpServers(composioSession);
+    const systemPromptAppend = await buildWorkflowSystemPrompt(workflow, composioSession);
+    const allowedTools = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'Skill', 'Task', 'TaskOutput'];
+    if (browserMcpServer) allowedTools.push(...BROWSER_TOOL_NAMES);
+    if (documentMcpServer) allowedTools.push(...DOCUMENT_TOOL_NAMES);
+
+    const runWorkflow = (await import('./workflow-run.js')).runWorkflow;
+    const result = await runWorkflow(workflow, userId, {
+      mcpServers,
+      systemPromptAppend,
+      providerName: req.body.provider || 'claude',
+      model: req.body.model || null,
+      allowedTools
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('[WORKFLOWS] Run error:', err);
+    sendInternalError(res, err);
+  }
+});
+
 // ==================== TASK MANAGEMENT ENDPOINTS ====================
 
 // --- Labels (before :taskId to avoid param capture) ---
@@ -1315,6 +1534,9 @@ app.get('/api/tasks/labels', requireAuth, rateLimit.tasks, async (req, res) => {
 app.post('/api/tasks/labels', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
     const label = await taskStore.createLabel(req.user.id, req.body);
+    if (!label) {
+      return res.status(501).json({ error: missingSchemaMessage('Task labels') });
+    }
     res.status(201).json(label);
   } catch (err) {
     console.error('[TASKS] Create label error:', err);
@@ -1396,6 +1618,9 @@ app.post('/api/tasks', requireAuth, rateLimit.tasks, async (req, res) => {
   try {
     if (!req.body.title) return res.status(400).json({ error: 'title is required' });
     const task = await taskStore.createTask(req.user.id, req.body);
+    if (!task) {
+      return res.status(501).json({ error: 'Tasks are not available. Required database table/migration may be missing.' });
+    }
     res.status(201).json(task);
   } catch (err) {
     console.error('[TASKS] Create error:', err);
@@ -1467,6 +1692,9 @@ app.post('/api/tasks/:taskId/labels/:labelId', requireAuth, rateLimit.tasks, asy
       return res.status(400).json({ error: 'Invalid taskId or labelId' });
     }
     const assignment = await taskStore.assignLabel(req.params.taskId, req.params.labelId, req.user.id);
+    if (!assignment) {
+      return res.status(501).json({ error: missingSchemaMessage('Task label assignments') });
+    }
     res.status(201).json(assignment);
   } catch (err) {
     console.error('[TASKS] Assign label error:', err);
@@ -1541,10 +1769,18 @@ app.post('/api/chat', requireAuth, rateLimit.chat, async (req, res) => {
 
     try {
       // Persist chat + user message to Supabase (non-blocking for anonymous)
+      let chatPersistenceWarning = null;
       if (isSupabaseConfigured() && !isAnonymousUserId(userId)) {
         try {
-          await chatStore.createChat({ id: chatId, userId, title: safeMessage.substring(0, 60), provider: providerName, model });
-          await chatStore.addMessage({ chatId, userId, role: 'user', content: safeMessage });
+          const persistedChat = await chatStore.createChat({ id: chatId, userId, title: safeMessage.substring(0, 60), provider: providerName, model });
+          if (!persistedChat && !chatPersistenceWarning) {
+            chatPersistenceWarning = missingSchemaMessage('Chat persistence');
+          }
+
+          const persistedMessage = await chatStore.addMessage({ chatId, userId, role: 'user', content: safeMessage });
+          if (!persistedMessage && !chatPersistenceWarning) {
+            chatPersistenceWarning = missingSchemaMessage('Chat persistence');
+          }
         } catch (dbErr) {
           // If chat ownership/auth checks fail, don't continue the stream.
           if (shouldFailDbWrite(dbErr)) {
@@ -1552,6 +1788,14 @@ app.post('/api/chat', requireAuth, rateLimit.chat, async (req, res) => {
           }
           console.error('[CHAT] DB write error (non-fatal):', dbErr.message);
         }
+      }
+
+      if (chatPersistenceWarning) {
+        res.write(`event: status\ndata: ${JSON.stringify({
+          type: 'warning',
+          code: 501,
+          error: chatPersistenceWarning
+        })}\n\n`);
       }
 
     // Get or create Composio session for this user (optional).
@@ -1610,7 +1854,7 @@ app.post('/api/chat', requireAuth, rateLimit.chat, async (req, res) => {
       chatMetadata.externalContent = externalContent;
     }
 
-    // Build system prompt from user instructions + project context + external resources + plugin skills
+    // Build system prompt from user instructions + project context + external resources + plugin skills + user skills
     let systemPromptAppend = buildSystemPrompt(chatMetadata);
     if (pluginManager) {
       const pluginPrompt = pluginManager.getSystemPromptAdditions();
@@ -1619,6 +1863,12 @@ app.post('/api/chat', requireAuth, rateLimit.chat, async (req, res) => {
           ? systemPromptAppend + '\n\n' + pluginPrompt
           : pluginPrompt;
       }
+    }
+    const userSkillsPrompt = getUserSkillsPrompt();
+    if (userSkillsPrompt) {
+      systemPromptAppend = systemPromptAppend
+        ? systemPromptAppend + '\n\n' + userSkillsPrompt
+        : userSkillsPrompt;
     }
 
     // Merge plugin agent definitions with request-supplied agents
@@ -1798,6 +2048,68 @@ app.post('/api/permission-response', requireAuth, async (req, res) => {
   }
 });
 
+// List integration items (Notion pages, Google Drive files) for Context panel pickers
+app.get('/api/context/integrations/list', requireAuth, rateLimit.reports, async (req, res) => {
+  try {
+    const type = (req.query.type || '').toLowerCase();
+    if (!['notion', 'gdrive', 'clickup'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid type. Use notion, gdrive, or clickup.' });
+    }
+    const userId = req.user.id;
+    let composioSession = getComposioSession(userId);
+    if (!composioSession && ensureComposioClient()) {
+      try {
+        composioSession = await ensureComposioClient().create(userId);
+        setComposioSession(userId, composioSession);
+      } catch (err) {
+        console.warn('[CONTEXT] Composio session create failed:', err.message);
+        return res.json({ items: [], error: 'Connect your Composio key and link the app in Composio.' });
+      }
+    }
+    if (!composioSession?.mcp?.url) {
+      return res.json({ items: [], error: 'Composio not configured. Add your API key in Settings and link Notion/Google Drive in Composio.' });
+    }
+    const items = await listIntegrationItems(composioSession, type);
+    res.json({ items: items || [] });
+  } catch (err) {
+    console.error('[CONTEXT] List integrations error:', err);
+    sendInternalError(res, err);
+  }
+});
+
+// Get active tools endpoint
+app.get('/api/tools/active', requireAuth, (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Get existing session if any, don't create new one just for listing
+    const composioSession = getComposioSession(userId);
+    const servers = buildMcpServers(composioSession);
+    
+    const tools = Object.keys(servers).map(key => {
+      const server = servers[key];
+      // Format a nice display name
+      let name = key.charAt(0).toUpperCase() + key.slice(1);
+      if (key === 'composio') name = 'Composio (App Integrations)';
+      else if (key === 'smithery') name = 'Smithery (Search)';
+      else if (key === 'browser') name = 'Browser Automation';
+      else if (key === 'documents') name = 'Document Generation';
+      else if (key === 'dataforseo') name = 'DataForSEO (Official)';
+      else if (key === 'dataforseo_extra') name = 'DataForSEO (Extra)';
+      
+      return {
+        id: key,
+        name: name,
+        type: server.type
+      };
+    });
+    
+    res.json({ tools });
+  } catch (err) {
+    console.error('[TOOLS] GET active error:', err);
+    sendInternalError(res, err);
+  }
+});
+
 // Get available providers endpoint
 app.get('/api/providers', (_req, res) => {
   res.json({
@@ -1919,7 +2231,14 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
       }
     }
 
-    saveUserSettings(data);
+    let savedPath = null;
+    let saveWarning = null;
+    try {
+      savedPath = saveUserSettings(data);
+    } catch (err) {
+      console.error('[SETTINGS] Failed to persist settings:', err.message);
+      saveWarning = 'Settings are active for this process only. Update failed due server write permissions.';
+    }
 
     // Re-initialize browser if browser settings changed
     if (body.browser) {
@@ -1954,7 +2273,7 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
       console.log('[SETTINGS] DataForSEO credentials changed; cleared MCP config cache');
     }
 
-    res.json({
+    const response = {
       apiKeys: {
         anthropic: maskKey(data.apiKeys.anthropic),
         composio: maskKey(data.apiKeys.composio),
@@ -1967,7 +2286,15 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
       instructions: data.instructions || { global: '', folders: [] },
       permissions: data.permissions || { mode: 'bypassPermissions', allowedDirectories: [], fileDeleteConfirmation: true },
       documents: data.documents || { outputDirectory: path.join(os.homedir(), 'Documents', 'generated') }
-    });
+    };
+
+    if (saveWarning) {
+      response.saved = false;
+      response.savedPath = savedPath;
+      response.warning = saveWarning;
+    }
+
+    res.json(response);
   } catch (err) {
     console.error('[SETTINGS] PUT error:', err);
     sendInternalError(res, err);
@@ -2193,6 +2520,23 @@ if (process.env.NODE_ENV !== 'test') {
   if (isSupabaseConfigured()) {
     setupCronJobs();
     startEmbeddingCron();
+    composioSessionStore.register({
+      getSession: getComposioSession,
+      buildMcp: buildMcpServers,
+      createSession: async (userId) => {
+        const c = ensureComposioClient();
+        if (!c) return null;
+        const s = await c.create(userId);
+        setComposioSession(userId, s);
+        return s;
+      },
+      getAllowedTools: () => {
+        const tools = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'Skill', 'Task', 'TaskOutput'];
+        if (browserMcpServer) tools.push(...BROWSER_TOOL_NAMES);
+        if (documentMcpServer) tools.push(...DOCUMENT_TOOL_NAMES);
+        return tools;
+      }
+    });
     startScheduler().catch(err => console.error('[SCHEDULER] Startup error:', err.message));
   }
 

@@ -157,9 +157,47 @@ export async function createTestApp(opts = {}) {
   });
 
   // ===================== DATABASE ACCESS =====================
+  function getSupabaseProjectRef() {
+    const url = process.env.SUPABASE_URL;
+    if (!url || typeof url !== 'string') return null;
+    try {
+      const u = new URL(url.trim());
+      const host = u.hostname.toLowerCase();
+      if (host.endsWith('.supabase.co')) {
+        const sub = host.slice(0, -'.supabase.co'.length);
+        return sub || null;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   app.get('/api/database/access', requireAuth, (req, res) => {
-    if (!isSupabaseConfigured()) return res.json({ allowed: false });
-    res.json({ allowed: isAdmin(req.user?.email) });
+    const configured = isSupabaseConfigured();
+    const supabaseUrl = (process.env.SUPABASE_URL || '').trim() || null;
+    const projectRef = getSupabaseProjectRef();
+    const dashboardUrl = projectRef ? `https://supabase.com/dashboard/project/${projectRef}` : null;
+    const databaseName = 'postgres';
+
+    if (!configured) {
+      return res.json({
+        allowed: false,
+        configured: false,
+        supabaseUrl: null,
+        projectRef: null,
+        dashboardUrl: null,
+        databaseName: null
+      });
+    }
+    res.json({
+      allowed: isAdmin(req.user?.email),
+      configured: true,
+      supabaseUrl,
+      projectRef,
+      dashboardUrl,
+      databaseName
+    });
   });
 
   // ===================== SETTINGS (stub — no file I/O) =====================

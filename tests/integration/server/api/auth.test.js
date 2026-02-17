@@ -137,7 +137,7 @@ describe('Auth, Profile, and Access endpoints', () => {
   // ===================== GET /api/database/access =====================
 
   describe('GET /api/database/access', () => {
-    it('returns allowed=true for admin user', async () => {
+    it('returns allowed=true and connection metadata for admin user', async () => {
       process.env.ADMIN_EMAILS = 'admin@test.com';
 
       const res = await request(app)
@@ -146,9 +146,14 @@ describe('Auth, Profile, and Access endpoints', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.allowed).toBe(true);
+      expect(res.body.configured).toBe(true);
+      expect(res.body.supabaseUrl).toBe(process.env.SUPABASE_URL);
+      expect(res.body.projectRef).toBe(res.body.supabaseUrl ? new URL(res.body.supabaseUrl).hostname.replace(/\.supabase\.co$/, '') : null);
+      expect(res.body.dashboardUrl).toBe(res.body.projectRef ? `https://supabase.com/dashboard/project/${res.body.projectRef}` : null);
+      expect(res.body.databaseName).toBe('postgres');
     });
 
-    it('returns allowed=false for non-admin user', async () => {
+    it('returns allowed=false but connection metadata for non-admin user', async () => {
       process.env.ADMIN_EMAILS = 'admin@test.com';
 
       const res = await request(app)
@@ -157,18 +162,27 @@ describe('Auth, Profile, and Access endpoints', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.allowed).toBe(false);
+      expect(res.body.configured).toBe(true);
+      expect(res.body.supabaseUrl).toBe(process.env.SUPABASE_URL);
+      expect(res.body.projectRef).toBe(res.body.supabaseUrl ? new URL(res.body.supabaseUrl).hostname.replace(/\.supabase\.co$/, '') : null);
+      expect(res.body.dashboardUrl).toBe(res.body.projectRef ? `https://supabase.com/dashboard/project/${res.body.projectRef}` : null);
+      expect(res.body.databaseName).toBe('postgres');
     });
 
-    it('returns allowed=false when Supabase is not configured', async () => {
+    it('returns allowed=false and null metadata when Supabase is not configured', async () => {
       const noSupaApp = await createTestApp({ supabaseConfigured: false });
 
-      // Still need auth for the route
       const res = await request(noSupaApp)
         .get('/api/database/access')
         .set(createAuthHeaders(adminToken));
 
       expect(res.status).toBe(200);
       expect(res.body.allowed).toBe(false);
+      expect(res.body.configured).toBe(false);
+      expect(res.body.supabaseUrl).toBeNull();
+      expect(res.body.projectRef).toBeNull();
+      expect(res.body.dashboardUrl).toBeNull();
+      expect(res.body.databaseName).toBeNull();
     });
   });
 

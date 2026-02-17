@@ -8,6 +8,7 @@ npm run test:smoke              # Run all smoke tests
 npm run test:e2e:ui            # Interactive mode with UI
 npm run test:e2e:headed        # See the browser
 npm run test:e2e:debug         # Debug with breakpoints
+npm run test:smoke:deployed    # Deployment smoke check (`DEPLOY_SMOKE_URL=...`)
 
 # Unit tests
 npm test                       # Run once

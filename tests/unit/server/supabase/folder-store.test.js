@@ -1,9 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 vi.mock('../../../../server/supabase/client.js', () => {
-  // Use a simple in-memory mock directly here to avoid hoisting/initialization issues
+  // Use a simple in-memory mock; folder-store uses getAdminClient(), tests use supabase.seed/reset
   const tables = new Map();
-  
+
   const applyFilters = (rows, filters) => {
     let result = [...rows];
     for (const f of filters) {
@@ -51,12 +51,15 @@ vi.mock('../../../../server/supabase/client.js', () => {
     return builder;
   };
 
+  const db = {
+    from: (t) => createBuilder(t),
+    seed: (t, d) => tables.set(t, d),
+    reset: () => tables.clear()
+  };
+
   return {
-    supabase: {
-      from: (t) => createBuilder(t),
-      seed: (t, d) => tables.set(t, d),
-      reset: () => tables.clear()
-    }
+    getAdminClient: () => db,
+    supabase: db
   };
 });
 

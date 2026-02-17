@@ -272,16 +272,24 @@ describe('web-api.js electronAPI polyfill', () => {
   });
 
   describe('getDatabaseAccess', () => {
-    it('returns allowed status', async () => {
+    it('passes through full access payload unchanged', async () => {
       const api = loadWebApi();
+      const payload = {
+        allowed: true,
+        configured: true,
+        supabaseUrl: 'https://abc.supabase.co',
+        projectRef: 'abc',
+        dashboardUrl: 'https://supabase.com/dashboard/project/abc',
+        databaseName: 'postgres'
+      };
       mockFetch.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ allowed: true })
+        json: () => Promise.resolve(payload)
       });
-      expect(await api.getDatabaseAccess()).toEqual({ allowed: true });
+      expect(await api.getDatabaseAccess()).toEqual(payload);
     });
 
-    it('returns false on error', async () => {
+    it('returns allowed: false on error', async () => {
       const api = loadWebApi();
       mockFetch.mockRejectedValue(new Error('fail'));
       expect(await api.getDatabaseAccess()).toEqual({ allowed: false });

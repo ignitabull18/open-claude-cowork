@@ -2,7 +2,10 @@ import net from 'node:net';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import * as jobStore from './supabase/job-store.js';
 import * as reportStore from './supabase/report-store.js';
+import * as workflowStore from './supabase/workflow-store.js';
 import { getProvider } from './providers/index.js';
+import { getWorkflowRunOptions } from './workflow-run-options.js';
+import { runWorkflow } from './workflow-run.js';
 
 const POLL_INTERVAL_MS = 60_000; // 60 seconds
 const MAX_DAILY_CRON_LOOKAHEAD_MINUTES = 60 * 24 * 365;
@@ -668,6 +671,22 @@ async function executeJob(job) {
 
       case 'chat_message': {
         result = await runChatMessageAction(job.action_config || {}, job.user_id);
+        break;
+      }
+
+      case 'run_workflow': {
+        const config = job.action_config || {};
+        const workflowId = config.workflowId || config.workflow_id;
+        if (!workflowId) throw new Error('run_workflow requires workflowId in action_config');
+        const workflow = await workflowStore.getWorkflow(workflowId, job.user_id);
+        if (!workflow) throw new Error('Workflow not found: ' + workflowId);
+        const options = await getWorkflowRunOptions(workflow, job.user_id);
+        const runResult = await runWorkflow(workflow, job.user_id, {
+          ...options,
+          providerName: config.provider || 'claude',
+          model: config.model || null
+        });
+        result = { executionId: runResult.executionId, status: runResult.status, durationMs: runResult.durationMs, error: runResult.error };
         break;
       }
 
