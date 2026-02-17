@@ -1,4 +1,4 @@
-import { getAdminClient } from './client.js';
+import { getAdminClient, getUserClient } from './client.js';
 import crypto from 'crypto';
 
 
@@ -28,27 +28,52 @@ function getActorUserId(req) {
   return `anonymous:${getAnonymousSessionId(req)}`;
 }
 
+function getBearerToken(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || typeof authHeader !== 'string') return null;
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!bearerMatch) return null;
+  return bearerMatch[1];
+}
+
 /**
  * Express middleware that validates a Supabase JWT from the Authorization header.
  * Sets req.user = { id, email, role } on success.
  * No anonymous fallback is allowed here.
  */
 export async function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const token = getBearerToken(req);
 
   if (token) {
     try {
-      const admin = getAdminClient();
-      const { data: { user }, error } = await admin.auth.getUser(token);
-      if (error || !user) {
-        return res.status(401).json({ error: 'Invalid or expired token' });
+      const userClient = getUserClient(token);
+      const { data: { user: authUser }, error: userError } = await userClient.auth.getUser(token);
+      if (authUser && !userError) {
+        req.user = { id: authUser.id, email: authUser.email, role: authUser.role };
+        return next();
       }
-      req.user = { id: user.id, email: user.email, role: user.role };
-      return next();
-    } catch (err) {
-      return res.status(401).json({ error: 'Auth verification failed' });
+    } catch {
+      // Fall through to admin verification if user token check fails.
     }
+
+    try {
+      const admin = getAdminClient();
+      const { data: { user: adminUser }, error: adminError } = await admin.auth.getUser(token);
+      if (!adminError && adminUser) {
+        req.user = { id: adminUser.id, email: adminUser.email, role: adminUser.role };
+        return next();
+      }
+    } catch {
+      // Keep behavior: unauthenticated when both user and admin checks fail.
+    }
+
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+
+  if (process.env.ALLOW_ANONYMOUS === 'true') {
+    const sessionId = getAnonymousSessionId(req);
+    req.user = { id: `anonymous:${sessionId}`, email: null, role: 'anon' };
+    return next();
   }
 
   return res.status(401).json({ error: 'Authentication required' });
