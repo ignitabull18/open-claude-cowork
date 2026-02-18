@@ -157,6 +157,14 @@ Output is JSON with `email`, `password`, and `id`. Use that email/password to si
 node scripts/deploy-smoke-check.js https://your-deployment.example.com
 ```
 
+**Trigger Coolify deploy** (after pushing code):
+
+```bash
+node scripts/trigger-coolify-deploy.js
+```
+
+Uses `COOLIFY_BASE_URL` and `COOLIFY_API_TOKEN` from env, or 1Password (Coolify2 API url/credential). App UUID defaults to the open-claude-cowork application on Coolify2.
+
 **3. Sign in and create a workflow** (Playwright; no local server):
 
 ```bash
@@ -196,7 +204,8 @@ open-claude-cowork/
 │   ├── start-all.js           # Starts server then Electron
 │   ├── create-test-user.js    # Create Supabase Auth test user (env: SUPABASE_*)
 │   ├── deploy-smoke-check.js  # Hit deploy URL health/config/APIs (no auth)
-│   └── e2e-signin-and-workflow.js  # Playwright: sign in on deploy URL and create a job
+│   ├── e2e-signin-and-workflow.js  # Playwright: sign in on deploy URL and create a job
+│   └── trigger-coolify-deploy.js   # Trigger Coolify deploy via API (env or 1Password)
 ├── Dockerfile           # For Coolify / Docker
 ├── .dockerignore
 ├── .env.example
