@@ -161,7 +161,6 @@ function summarize(items) {
       { name: 'reports', button: '#reportsSidebarBtn', back: '#reportsBackBtn', unavailable: '#reportsUnavailable' },
       { name: 'jobs', button: '#jobsSidebarBtn', back: '#jobsBackBtn', unavailable: '#jobsUnavailable' },
       { name: 'vault', button: '#vaultSidebarBtn', back: '#vaultBackBtn', unavailable: '#vaultUnavailable' },
-      { name: 'tasks', button: '#tasksSidebarBtn', back: '#tasksBackBtn', unavailable: '#tasksUnavailable' },
       { name: 'settings', button: '#settingsSidebarBtn', back: '#settingsBackBtn', unavailable: '#settingsUnavailable' }
     ];
 
@@ -185,31 +184,6 @@ function summarize(items) {
 
       if (item.unavailable && (await page.locator(item.unavailable).isVisible().catch(() => false))) {
         addIssue('medium', item.name, `${item.name} shows unavailable state`, `${item.unavailable} visible`);
-      }
-
-      if (item.name === 'tasks') {
-        const list = await page.locator('#tasksKanbanView').count().catch(() => 0);
-        if (!list) {
-          addIssue('low', 'tasks', 'Tasks view content missing', '#tasksKanbanView count 0');
-        }
-        const newBtn = page.locator('#tasksNewBtn');
-        if (await newBtn.isVisible().catch(() => false)) {
-          await newBtn.click();
-          await page.waitForTimeout(350);
-          const modal = page.locator('#taskModal');
-          if (await modal.isVisible().catch(() => false)) {
-            await page.locator('#taskModalTitleInput').fill('Test task');
-            await page.locator('#taskModalDesc').fill('automated creation');
-            await page.locator('#taskModalSaveBtn').click();
-            await page.waitForTimeout(300);
-            await page.locator('#taskModalClose').click();
-            await page.waitForTimeout(200);
-          } else {
-            addIssue('low', 'tasks', 'Task modal did not open', '#taskModal absent after tasksNewBtn');
-          }
-        } else {
-          addIssue('low', 'tasks', 'Task create button missing', '#tasksNewBtn not visible');
-        }
       }
 
       if (item.name === 'settings') {

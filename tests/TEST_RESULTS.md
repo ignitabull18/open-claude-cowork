@@ -28,11 +28,10 @@ Tests the fundamental functionality of the application across all major features
 | 12 | Sidebar collapse/expand | ⚠️ Partial | Animation timing issues |
 | 13 | Reports view | ✅ Pass | Opens correctly |
 | 14 | Jobs view | ✅ Pass | Opens correctly |
-| 15 | Tasks view | ✅ Pass | Opens correctly |
-| 16 | Vault view | ⚠️ Timeout | May need Supabase connection |
-| 17 | Authentication UI | ✅ Pass | Skip option available |
-| 18 | File attachment | ⚠️ Partial | Button visible, interaction varies |
-| 19 | Thinking mode toggle | ⚠️ Partial | Click registered, state check varies |
+| 15 | Vault view | ⚠️ Timeout | May need Supabase connection |
+| 16 | Authentication UI | ✅ Pass | Skip option available |
+| 17 | File attachment | ⚠️ Partial | Button visible, interaction varies |
+| 18 | Thinking mode toggle | ⚠️ Partial | Click registered, state check varies |
 
 ### ✅ Responsive Design Tests (3 tests)
 Validates the application works across different screen sizes.

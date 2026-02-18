@@ -76,7 +76,7 @@ These were spotted during exploration; confirm and fix as part of the analysis.
 
 - [ ] **Window resize and small viewports**
   - Sidebars (left chat history, right progress/artifact): behavior when collapsed/expanded and on small windows.
-  - Database explorer, Reports, Jobs, Vault, Tasks: tables and grids on narrow screens.
+  - Database explorer, Reports, Jobs, Vault: tables and grids on narrow screens.
 - [ ] **High DPI / zoom**
   - Icons and text scaling; any fixed pixel sizes that break at 125%/150% zoom or non‑1x DPI.
 
@@ -93,9 +93,9 @@ These were spotted during exploration; confirm and fix as part of the analysis.
 ### 4.3 States and feedback
 
 - [ ] **Loading**
-  - Every async view (chat load, DB explorer, reports, jobs, vault, tasks) shows clear loading state; no blank content without spinner or skeleton.
+  - Every async view (chat load, DB explorer, reports, jobs, vault) shows clear loading state; no blank content without spinner or skeleton.
 - [ ] **Empty states**
-  - All lists (chats, reports, jobs, vault, tasks, tool calls, steps) have clear empty-state copy and, where relevant, a primary action.
+  - All lists (chats, reports, jobs, vault, tool calls, steps) have clear empty-state copy and, where relevant, a primary action.
 - [ ] **Errors**
   - Network/backend errors and validation errors shown in UI (not only console); retry or recovery where applicable.
 - [ ] **Backend down**
@@ -104,7 +104,7 @@ These were spotted during exploration; confirm and fix as part of the analysis.
 ### 4.4 Consistency
 
 - [ ] **Copy and terminology**
-  - Provider/model names, “Artifact”, “Vault”, “Reports”, “Jobs”, “Tasks” consistent across sidebar, headers, and settings.
+  - Provider/model names, “Artifact”, “Vault”, “Reports”, “Jobs” consistent across sidebar, headers, and settings.
 - [ ] **Buttons and forms**
   - Primary vs secondary actions; disabled state when submit is invalid; no double-submit.
 
@@ -130,9 +130,6 @@ These were spotted during exploration; confirm and fix as part of the analysis.
   - CRUD, schedule types, action types (report, webhook, export); list and run; Supabase-gated state.
 - [ ] **Vault**
   - Folders, upload, list, filter/sort, breadcrumbs; Supabase-gated state.
-- [ ] **Tasks**
-  - Kanban/calendar/list views, filters, create/edit/delete task modal; persistence (Supabase or local).
-
 ### 5.2 Edge cases
 
 - [ ] **Offline / flaky network**
@@ -222,7 +219,7 @@ Use this as the bar for closing the analysis:
 
 - No known critical bugs (wrong code, broken flows, security issues).
 - All main user flows have loading/empty/error handling and no silent failures.
-- Auth, chat, settings, and at least one of (reports / jobs / vault / tasks) are feature-complete and tested to a minimum standard.
+- Auth, chat, settings, and at least one of (reports / jobs / vault) are feature-complete and tested to a minimum standard.
 - Deployment (local, Docker, or packaged Electron) is documented and repeatable.
 - Security: no keys in frontend; CORS and rate limiting configured; uploads and DB access validated.
 - CLAUDE.md and README/SETUP_AND_DEPLOY reflect current setup and test commands.

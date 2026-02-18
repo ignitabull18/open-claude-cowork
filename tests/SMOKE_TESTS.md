@@ -15,12 +15,12 @@ The smoke test suite (`smoke.spec.js`) currently covers **36 tests** organized i
 - ✅ Home view displays greeting and tagline
 - ✅ Chat interface elements (message input, send button, attach, vault, thinking buttons)
 - ✅ Provider and model dropdown menus (Claude, Opus, Sonnet, Haiku)
-- ✅ API endpoint dependency health checks for tasks/jobs/reports/chats/vault
+- ✅ API endpoint dependency health checks for jobs/reports/chats/vault
 - ✅ Settings panel navigation (open and back)
 - ✅ Message input handling and send button state management
 - ✅ Left sidebar with all navigation buttons
 - ✅ Sidebar collapse/expand functionality
-- ✅ View navigation (Reports, Jobs, Tasks, Vault)
+- ✅ View navigation (Reports, Jobs, Vault)
 - ✅ Authentication UI (skip option, form elements)
 - ✅ File attachment button functionality
 - ✅ Thinking mode toggle

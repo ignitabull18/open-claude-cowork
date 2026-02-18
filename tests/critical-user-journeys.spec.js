@@ -35,7 +35,6 @@ async function prepareHomeState(page) {
       const settings = document.getElementById('settingsView');
       const reports = document.getElementById('reportsView');
       const jobs = document.getElementById('jobsView');
-      const tasks = document.getElementById('tasksView');
       const vault = document.getElementById('vaultView');
       const sidebar = document.getElementById('leftSidebar');
 
@@ -44,7 +43,6 @@ async function prepareHomeState(page) {
       if (settings) settings.classList.add('hidden');
       if (reports) reports.classList.add('hidden');
       if (jobs) jobs.classList.add('hidden');
-      if (tasks) tasks.classList.add('hidden');
       if (vault) vault.classList.add('hidden');
       if (sidebar) sidebar.classList.remove('hidden', 'collapsed');
       if (sidebar) {
@@ -119,10 +117,6 @@ test.describe('Critical User Journeys', () => {
     await page.locator('#jobsSidebarBtn').click();
     await expect(page.locator('#jobsView')).toBeVisible();
     await expect(page.locator('.jobs-title')).toContainText('Workflows');
-
-    await page.locator('#tasksSidebarBtn').click();
-    await expect(page.locator('#tasksView')).toBeVisible();
-    await expect(page.locator('.tasks-title')).toContainText('Tasks');
 
     await page.locator('#vaultSidebarBtn').click();
     await expect(page.locator('#vaultView')).toBeVisible();

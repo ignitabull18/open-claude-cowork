@@ -22,7 +22,6 @@ export async function prepareAppState(page, options = { skipAuth: true }) {
       const settingsView = document.getElementById('settingsView');
       const reportsView = document.getElementById('reportsView');
       const jobsView = document.getElementById('jobsView');
-      const tasksView = document.getElementById('tasksView');
       const vaultView = document.getElementById('vaultView');
       const dbView = document.getElementById('dbView');
       if (authView) authView.classList.add('hidden');
@@ -32,7 +31,6 @@ export async function prepareAppState(page, options = { skipAuth: true }) {
       if (settingsView) settingsView.classList.add('hidden');
       if (reportsView) reportsView.classList.add('hidden');
       if (jobsView) jobsView.classList.add('hidden');
-      if (tasksView) tasksView.classList.add('hidden');
       if (vaultView) vaultView.classList.add('hidden');
       if (dbView) dbView.classList.add('hidden');
     });
@@ -46,7 +44,6 @@ export async function prepareAppState(page, options = { skipAuth: true }) {
       const settingsView = document.getElementById('settingsView');
       const reportsView = document.getElementById('reportsView');
       const jobsView = document.getElementById('jobsView');
-      const tasksView = document.getElementById('tasksView');
       const vaultView = document.getElementById('vaultView');
       const leftSidebar = document.getElementById('leftSidebar');
       const leftSidebarExpand = document.getElementById('leftSidebarExpand');
@@ -56,7 +53,6 @@ export async function prepareAppState(page, options = { skipAuth: true }) {
       if (settingsView) settingsView.classList.add('hidden');
       if (reportsView) reportsView.classList.add('hidden');
       if (jobsView) jobsView.classList.add('hidden');
-      if (tasksView) tasksView.classList.add('hidden');
       if (vaultView) vaultView.classList.add('hidden');
       if (leftSidebar) leftSidebar.classList.remove('hidden', 'collapsed');
       if (leftSidebarExpand) leftSidebarExpand.classList.remove('visible');

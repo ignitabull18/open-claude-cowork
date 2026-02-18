@@ -170,7 +170,6 @@ async function main() {
     { method: 'POST', path: '/api/messages' },
     { method: 'POST', path: '/api/vault/folders' },
     { method: 'GET', path: '/api/vault/folders' },
-    { method: 'GET', path: '/api/tasks' },
     { method: 'GET', path: '/api/jobs' },
     { method: 'GET', path: '/api/plugins' },
     { method: 'POST', path: '/api/upload' },

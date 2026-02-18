@@ -1,5 +1,5 @@
 -- ============================================================
--- 003_tasks.sql — Task Management schema
+-- 003_tasks.sql — Task Management schema (DEPRECATED: Tasks feature removed from app; migration kept for historical deployments.)
 -- Run this in the Supabase SQL editor or via supabase db push
 -- ============================================================
 

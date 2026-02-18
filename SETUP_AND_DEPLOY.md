@@ -113,6 +113,7 @@ npm start
 | `COMPOSIO_API_KEY`   | Yes      | From Composio                  |
 | `PORT`               | Optional | Coolify often sets this        |
 | `CORS_ORIGINS`       | Yes (prod) | In production, set to your app origin (e.g. `https://cowork.ignitabull.org`). If unset, no origins are allowed. |
+| `ADMIN_EMAILS`       | Optional   | Comma-separated emails that see **Database Explorer** in the nav. If unset, the button is hidden for everyone. |
 
 Do **not** put `.env` in the image; use Coolify’s env/secrets.
 

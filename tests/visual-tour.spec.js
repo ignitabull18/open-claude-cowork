@@ -91,26 +91,6 @@ test.describe('Visual tour', () => {
     await screenshot('jobs');
     await page.waitForTimeout(200);
 
-    // Tasks + Kanban / Calendar / List
-    await showView('tasks');
-    await expect(page.locator('#tasksView')).toBeVisible();
-    await expect(page.locator('.tasks-title')).toContainText('Tasks');
-    await expect(page.locator('.tasks-view-switcher')).toBeVisible();
-    await screenshot('tasks-kanban');
-
-    const calendarTab = page.locator('.tasks-view-tab[data-view="calendar"]');
-    const listTab = page.locator('.tasks-view-tab[data-view="list"]');
-    if (await calendarTab.isVisible()) {
-      await calendarTab.click();
-      await page.waitForTimeout(300);
-      await screenshot('tasks-calendar');
-    }
-    if (await listTab.isVisible()) {
-      await listTab.click();
-      await page.waitForTimeout(300);
-      await screenshot('tasks-list');
-    }
-
     // Vault
     await showView('vault');
     await expect(page.locator('#vaultView')).toBeVisible();

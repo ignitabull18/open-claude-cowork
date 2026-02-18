@@ -54,14 +54,6 @@
           </svg>
         </button>
         <div class="nav-rail-divider"></div>
-        <button class="nav-rail-item" id="tasksSidebarBtn" data-view="tasks" title="Tasks">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="8" y1="9" x2="16" y2="9"></line>
-            <line x1="8" y1="13" x2="14" y2="13"></line>
-            <line x1="8" y1="17" x2="12" y2="17"></line>
-          </svg>
-        </button>
         <button class="nav-rail-item" id="vaultSidebarBtn" data-view="vault" title="Vault">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -198,17 +190,16 @@
       </div>
 
       <div class="quick-actions-grid">
-        <div class="quick-action-card" onclick="showView('tasks')">
-          <div class="quick-action-icon tasks">
+        <div class="quick-action-card" onclick="showView('jobs')">
+          <div class="quick-action-icon workflows">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="8" y1="9" x2="16" y2="9"></line>
-              <line x1="8" y1="13" x2="14" y2="13"></line>
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
             </svg>
           </div>
           <div class="quick-action-info">
-            <div class="quick-action-title">Manage Tasks</div>
-            <div class="quick-action-desc">Kanban board & planner</div>
+            <div class="quick-action-title">Workflows</div>
+            <div class="quick-action-desc">Build, schedule & run automations</div>
           </div>
         </div>
         <div class="quick-action-card" onclick="showView('vault')">
@@ -1425,104 +1416,6 @@
         </div>
       </div>
 
-      <!-- ==================== TASKS VIEW ==================== -->
-      <div id="tasksView" class="tasks-view hidden">
-        <div class="tasks-header">
-          <h2 class="tasks-title">Tasks</h2>
-          <div class="tasks-view-switcher">
-            <button class="tasks-view-tab active" data-view="kanban">Kanban</button>
-            <button class="tasks-view-tab" data-view="calendar">Calendar</button>
-            <button class="tasks-view-tab" data-view="list">List</button>
-          </div>
-          <button class="tasks-new-btn" id="tasksNewBtn">+ New Task</button>
-        </div>
-
-        <div class="tasks-filter-bar">
-          <select class="tasks-filter-select" id="tasksFilterStatus">
-            <option value="">All Statuses</option>
-            <option value="backlog">Backlog</option>
-            <option value="todo">To Do</option>
-            <option value="in_progress">In Progress</option>
-            <option value="done">Done</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <select class="tasks-filter-select" id="tasksFilterPriority">
-            <option value="">All Priorities</option>
-            <option value="1">Urgent</option>
-            <option value="2">High</option>
-            <option value="3">Normal</option>
-            <option value="4">Low</option>
-          </select>
-          <select class="tasks-filter-select" id="tasksFilterLabel">
-            <option value="">All Labels</option>
-          </select>
-          <input type="text" class="tasks-filter-search" id="tasksFilterSearch" placeholder="Search tasks...">
-        </div>
-
-        <div id="tasksKanbanView" class="tasks-kanban"></div>
-        <div id="tasksCalendarView" class="tasks-calendar hidden"></div>
-        <div id="tasksListView" class="tasks-list hidden"></div>
-
-        <!-- Task Modal -->
-        <div class="tasks-modal-overlay hidden" id="taskModal">
-          <div class="tasks-modal">
-            <div class="tasks-modal-header">
-              <h3 id="taskModalTitle">New Task</h3>
-      <button class="tasks-modal-close" id="taskModalClose" aria-label="Close task dialog">&times;</button>
-            </div>
-            <div class="tasks-modal-body">
-              <input type="hidden" id="taskModalId">
-              <div class="tasks-modal-field">
-                <label>Title</label>
-                <input type="text" id="taskModalTitleInput" placeholder="Task title..." required>
-              </div>
-              <div class="tasks-modal-field">
-                <label>Description</label>
-                <textarea id="taskModalDesc" rows="3" placeholder="Optional description..."></textarea>
-              </div>
-              <div class="tasks-modal-row">
-                <div class="tasks-modal-field">
-                  <label>Status</label>
-                  <select id="taskModalStatus">
-                    <option value="backlog">Backlog</option>
-                    <option value="todo" selected>To Do</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="done">Done</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                </div>
-                <div class="tasks-modal-field">
-                  <label>Priority</label>
-                  <select id="taskModalPriority">
-                    <option value="1">Urgent</option>
-                    <option value="2">High</option>
-                    <option value="3" selected>Normal</option>
-                    <option value="4">Low</option>
-                  </select>
-                </div>
-              </div>
-              <div class="tasks-modal-row">
-                <div class="tasks-modal-field">
-                  <label>Due Date</label>
-                  <input type="datetime-local" id="taskModalDue">
-                </div>
-                <div class="tasks-modal-field">
-                  <label>Labels</label>
-                  <div class="tasks-modal-labels" id="taskModalLabels"></div>
-                </div>
-              </div>
-            </div>
-            <div class="tasks-modal-footer">
-              <button class="tasks-modal-delete hidden" id="taskModalDeleteBtn">Delete</button>
-              <div class="tasks-modal-actions">
-                <button class="tasks-modal-cancel" id="taskModalCancelBtn">Cancel</button>
-                <button class="tasks-modal-save" id="taskModalSaveBtn">Save</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
     </div><!-- end main-content -->
 
     <!-- Right Sidebar Expand Button (visible when collapsed) -->
@@ -1563,7 +1456,7 @@
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <input type="text" id="commandPaletteInput" placeholder="Search chats, tasks, assets, or commands... (Type '/' for actions)" autocomplete="off" />
+        <input type="text" id="commandPaletteInput" placeholder="Search chats, assets, or commands... (Type '/' for actions)" autocomplete="off" />
         <div class="command-palette-hint">Esc to close</div>
       </div>
       <div class="command-palette-results" id="commandPaletteResults">
@@ -1578,7 +1471,6 @@
   </div>
 
   <script src="db-explorer.js"></script>
-  <script src="tasks.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

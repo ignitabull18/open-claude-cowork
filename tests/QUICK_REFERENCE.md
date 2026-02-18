@@ -35,7 +35,7 @@ npm run test:renderer         # Frontend tests only
 - Provider/model selection dropdowns
 - Settings navigation
 - Left sidebar and navigation
-- All view transitions (Reports, Jobs, Tasks, Vault)
+- All view transitions (Reports, Jobs, Vault)
 
 ### Responsive Design ✅
 - Mobile (375×667)

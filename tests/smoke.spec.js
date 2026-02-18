@@ -4,8 +4,6 @@ import { prepareAppState } from './helpers/e2e-app-state.js';
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3001';
 
 const CORE_API_ENDPOINTS = [
-  '/api/tasks',
-  '/api/tasks/labels',
   '/api/jobs',
   '/api/reports/summary',
   '/api/chats',
@@ -13,8 +11,6 @@ const CORE_API_ENDPOINTS = [
 ];
 
 const CORE_API_NAME_BY_ENDPOINT = {
-  '/api/tasks': 'tasks',
-  '/api/tasks/labels': 'task labels',
   '/api/jobs': 'jobs',
   '/api/reports/summary': 'report summary',
   '/api/chats': 'chats',
@@ -229,7 +225,6 @@ test.describe('Open Claude Cowork - Smoke Tests', () => {
     // Check for footer buttons
     await expect(page.locator('#reportsSidebarBtn')).toBeVisible();
     await expect(page.locator('#jobsSidebarBtn')).toBeVisible();
-    await expect(page.locator('#tasksSidebarBtn')).toBeVisible();
     await expect(page.locator('#vaultSidebarBtn')).toBeVisible();
     await expect(page.locator('#settingsSidebarBtn')).toBeVisible();
   });
@@ -271,12 +266,6 @@ test.describe('Open Claude Cowork - Smoke Tests', () => {
     await page.locator('#jobsSidebarBtn').click();
     await expect(page.locator('#jobsView')).toBeVisible();
     await expect(page.locator('.jobs-title')).toContainText('Workflows');
-  });
-
-  test('should open Tasks view', async ({ page }) => {
-    await page.locator('#tasksSidebarBtn').click();
-    await expect(page.locator('#tasksView')).toBeVisible();
-    await expect(page.locator('.tasks-title')).toContainText('Tasks');
   });
 
   test('should open Vault view', async ({ page }) => {

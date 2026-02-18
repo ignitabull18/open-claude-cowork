@@ -853,8 +853,6 @@ function showAuthView() {
     if (reportsView) reportsView.classList.add('hidden');
     const jobsView = document.getElementById('jobsView');
     if (jobsView) jobsView.classList.add('hidden');
-    const tasksView = document.getElementById('tasksView');
-    if (tasksView) tasksView.classList.add('hidden');
     if (vaultView) vaultView.classList.add('hidden');
     if (sidebar) sidebar.classList.add('hidden');
     if (rightSidebarExpand) rightSidebarExpand.classList.add('hidden');
@@ -1641,7 +1639,6 @@ async function performPaletteSearch(query) {
     const cmdQuery = query.startsWith('/') ? query.slice(1) : query;
     const navs = [
       { type: 'nav', title: 'Home', subtitle: 'Go to overview', view: 'home', icon: 'home' },
-      { type: 'nav', title: 'Tasks', subtitle: 'Manage board & planner', view: 'tasks', icon: 'check-square' },
       { type: 'nav', title: 'Vault', subtitle: 'View assets & files', view: 'vault', icon: 'folder' },
       { type: 'nav', title: 'Reports', subtitle: 'Usage & analytics', view: 'reports', icon: 'bar-chart' },
       { type: 'nav', title: 'Workflows', subtitle: 'Scheduled automations', view: 'jobs', icon: 'clock' },
@@ -1695,8 +1692,7 @@ function renderPaletteResults(results) {
   const groups = {
     nav: { label: 'Navigation', items: [] },
     chat: { label: 'Chats', items: [] },
-    asset: { label: 'Assets', items: [] },
-    task: { label: 'Tasks', items: [] }
+    asset: { label: 'Assets', items: [] }
   };
 
   results.forEach(r => {
@@ -3327,7 +3323,7 @@ function showView(viewName) {
   });
 
   // Handle side panel visibility
-  // Show for home, chat, reports, and jobs; hide entirely for tasks/vault/settings/database
+  // Show for home, chat, reports, and jobs; hide entirely for vault/settings/database
   const sidebarEnabledViews = ['home', 'chat', 'reports', 'jobs'];
   const isSidebarEnabled = sidebarEnabledViews.includes(viewName);
 
@@ -3392,8 +3388,6 @@ function showView(viewName) {
   if (reportsView) reportsView.classList.toggle('hidden', viewName !== 'reports');
   const jobsViewEl = document.getElementById('jobsView');
   if (jobsViewEl) jobsViewEl.classList.toggle('hidden', viewName !== 'jobs');
-  const tasksViewEl = document.getElementById('tasksView');
-  if (tasksViewEl) tasksViewEl.classList.toggle('hidden', viewName !== 'tasks');
   if (vaultView) vaultView.classList.toggle('hidden', viewName !== 'vault');
   if (viewName === 'settings') {
     lastViewBeforeSettings = currentMainView;
@@ -3410,10 +3404,6 @@ function showView(viewName) {
   if (viewName === 'jobs') {
     lastViewBeforeSettings = currentMainView;
     initJobsView();
-  }
-  if (viewName === 'tasks') {
-    lastViewBeforeSettings = currentMainView;
-    if (typeof window.tasksView !== 'undefined') window.tasksView.load();
   }
   if (viewName === 'vault') {
     lastViewBeforeSettings = currentMainView;

@@ -29,7 +29,6 @@ async function forceHomeState(page) {
     const settingsView = document.getElementById('settingsView');
     const reportsView = document.getElementById('reportsView');
     const jobsView = document.getElementById('jobsView');
-    const tasksView = document.getElementById('tasksView');
     const vaultView = document.getElementById('vaultView');
 
     if (authView) authView.classList.add('hidden');
@@ -39,7 +38,6 @@ async function forceHomeState(page) {
     if (settingsView) settingsView.classList.add('hidden');
     if (reportsView) reportsView.classList.add('hidden');
     if (jobsView) jobsView.classList.add('hidden');
-    if (tasksView) tasksView.classList.add('hidden');
     if (vaultView) vaultView.classList.add('hidden');
   });
 
@@ -261,7 +259,6 @@ async function run() {
     { id: '#reportsSidebarBtn', back: '#reportsBackBtn', name: 'reports' },
     { id: '#jobsSidebarBtn', back: '#jobsBackBtn', name: 'jobs' },
     { id: '#vaultSidebarBtn', back: '#vaultBackBtn', name: 'vault' },
-    { id: '#tasksSidebarBtn', back: '', name: 'tasks' },
     { id: '#settingsSidebarBtn', back: '#settingsBackBtn', name: 'settings' }
   ];
 
@@ -305,18 +302,6 @@ async function run() {
       }
     }
 
-    if (view.name === 'tasks') {
-      const addTask = await page.locator('#tasksNewBtn').isVisible().catch(() => false);
-      if (!addTask) {
-        issues.push({
-          severity: 'low',
-          area: 'tasks',
-          issue: 'Task creation button not available',
-          evidence: '#tasksNewBtn missing'
-        });
-      }
-    }
-
     const hasSettings = view.name === 'settings';
     if (hasSettings) {
       const hasSectionTitle = await page.locator('#settingsView .settings-section-title').count();
@@ -340,34 +325,6 @@ async function run() {
           evidence: 'No known settings action button found'
         });
       }
-    }
-
-    if (view.name === 'tasks') {
-      const taskModalCloseBtn = page.locator('#taskModalClose, #taskModalCancelBtn');
-      const taskModal = page.locator('#taskModal');
-      const isModalVisible = await taskModal.count() && (await taskModal.isVisible());
-
-      if (isModalVisible) {
-        const closeSuccess = await taskModalCloseBtn.first().isVisible().catch(() => false);
-        if (closeSuccess) {
-          await taskModalCloseBtn.first().click({ force: true });
-          await page.waitForTimeout(300);
-        }
-      }
-
-      const homeShortcut = page.locator('.new-chat-sidebar-btn');
-      if (await homeShortcut.isVisible()) {
-        await homeShortcut.click();
-      } else {
-        await page.evaluate(() => {
-          if (typeof window.showView === 'function') {
-            window.showView('home');
-          }
-        });
-      }
-      await page.waitForTimeout(300);
-      await snap(`04-${view.name}-back`);
-      continue;
     }
 
     const backLocator = page.locator(view.back);
