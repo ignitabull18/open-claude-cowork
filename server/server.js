@@ -144,18 +144,14 @@ function getComposioSession(userId) {
     composioSessions.delete(userId);
     return null;
   }
-  composioSessions.delete(userId);
+  // Update TTL in-place (no delete/re-insert needed)
   entry.lastUsed = Date.now();
   entry.expiresAt = entry.lastUsed + COMPOSIO_SESSION_TTL_MS;
-  composioSessions.set(userId, entry);
   return entry.session;
 }
 
 function setComposioSession(userId, session) {
   if (!userId || !session) return;
-  if (composioSessions.has(userId)) {
-    composioSessions.delete(userId);
-  }
   composioSessions.set(userId, {
     session,
     lastUsed: Date.now(),
@@ -245,11 +241,14 @@ function isSafeParamId(value) {
 
 function applyUserSettingsToEnv(settings) {
   const data = settings || {};
-  process.env.ANTHROPIC_API_KEY = data.apiKeys?.anthropic || '';
-  process.env.COMPOSIO_API_KEY = data.apiKeys?.composio || '';
-  process.env.SMITHERY_API_KEY = data.apiKeys?.smithery || '';
-  process.env.DATAFORSEO_USERNAME = data.apiKeys?.dataforseoUsername || '';
-  process.env.DATAFORSEO_PASSWORD = data.apiKeys?.dataforseoPassword || '';
+  // Only override env vars if the settings file has a non-empty value.
+  // This preserves keys set via .env / Docker environment variables when
+  // user-settings.json has no value for a given key.
+  if (data.apiKeys?.anthropic) process.env.ANTHROPIC_API_KEY = data.apiKeys.anthropic;
+  if (data.apiKeys?.composio) process.env.COMPOSIO_API_KEY = data.apiKeys.composio;
+  if (data.apiKeys?.smithery) process.env.SMITHERY_API_KEY = data.apiKeys.smithery;
+  if (data.apiKeys?.dataforseoUsername) process.env.DATAFORSEO_USERNAME = data.apiKeys.dataforseoUsername;
+  if (data.apiKeys?.dataforseoPassword) process.env.DATAFORSEO_PASSWORD = data.apiKeys.dataforseoPassword;
 }
 
 function scheduleComposioSessionCleanup() {
@@ -662,6 +661,7 @@ app.get('/api/chats/:chatId', requireAuth, rateLimit.reports, async (req, res) =
       return res.status(400).json({ error: 'Invalid chatId' });
     }
     const chat = await chatStore.getChat(req.params.chatId, req.user.id);
+    if (!chat) return res.status(404).json({ error: 'Chat not found' });
     res.json(chat);
   } catch (err) {
     if (err.code === 'PGRST116') return res.status(404).json({ error: 'Chat not found' });
@@ -706,6 +706,9 @@ app.patch('/api/chats/:chatId', requireAuth, rateLimit.reports, async (req, res)
       return res.status(400).json({ error: 'Invalid chatId' });
     }
     const chat = await chatStore.updateChat(req.params.chatId, req.user.id, req.body);
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found or missing schema' });
+    }
     res.json(chat);
   } catch (err) {
     console.error('[CHATS] Update error:', err);
@@ -745,6 +748,9 @@ app.get('/api/profile', requireAuth, async (req, res) => {
 app.patch('/api/profile', requireAuth, async (req, res) => {
   try {
     const profile = await chatStore.updateProfile(req.user.id, req.body);
+    if (!profile) {
+      return res.status(404).json({ error: 'Profile not found or missing schema' });
+    }
     res.json(profile);
   } catch (err) {
     console.error('[PROFILE] Update error:', err);
@@ -919,6 +925,7 @@ app.patch('/api/vault/assets/:id', requireAuth, rateLimit.vault, async (req, res
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Vault requires Supabase' });
   try {
     const asset = await vaultStore.updateAsset(req.params.id, req.user.id, req.body);
+    if (!asset) return res.status(404).json({ error: 'Asset not found' });
     res.json(asset);
   } catch (err) {
     console.error('[VAULT] Update asset error:', err);
@@ -1288,6 +1295,7 @@ app.patch('/api/reports/saved/:reportId', requireAuth, rateLimit.reports, async 
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Reports require Supabase' });
   try {
     const report = await reportStore.updateSavedReport(req.params.reportId, req.user.id, req.body);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
     res.json(report);
   } catch (err) {
     console.error('[REPORTS] Update saved error:', err);
@@ -1364,6 +1372,7 @@ app.patch('/api/jobs/:jobId', requireAuth, rateLimit.jobs, async (req, res) => {
   if (!isSupabaseConfigured()) return res.status(501).json({ error: 'Jobs require Supabase' });
   try {
     const job = await jobStore.updateJob(req.params.jobId, req.user.id, req.body);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
     res.json(job);
   } catch (err) {
     console.error('[JOBS] Update error:', err);
@@ -1399,6 +1408,7 @@ app.post('/api/jobs/:jobId/run', requireAuth, rateLimit.jobs, async (req, res) =
   try {
     await triggerJob(req.params.jobId, req.user.id);
     const job = await jobStore.getJob(req.params.jobId, req.user.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
     res.json(job);
   } catch (err) {
     console.error('[JOBS] Run error:', err);
@@ -1648,6 +1658,9 @@ app.put('/api/tasks/:taskId', requireAuth, rateLimit.tasks, async (req, res) => 
       return res.status(400).json({ error: 'Invalid taskId' });
     }
     const task = await taskStore.updateTask(req.params.taskId, req.user.id, req.body);
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found or missing schema' });
+    }
     res.json(task);
   } catch (err) {
     console.error('[TASKS] Update error:', err);

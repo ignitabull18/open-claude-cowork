@@ -556,7 +556,7 @@
     },
     installPlugin: async function (gitUrl) {
       const response = await fetch(apiUrl('/api/plugins/install'), {
-        method: 'POST', headers: buildHeaders(), body: JSON.stringify({ gitUrl })
+        method: 'POST', headers: buildHeaders(), body: JSON.stringify({ url: gitUrl })
       });
       if (!response.ok) {
         const data = await response.json().catch(function () { return {}; });

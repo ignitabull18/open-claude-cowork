@@ -83,6 +83,14 @@ It validates:
 - Supabase anon key health against `/auth/v1/health`
 - Protected API routes return auth-gated `401` responses where expected
 
+**Optional — sign in and create a workflow:** To test the full flow (auth + create job) on a deployed URL, create a Supabase test user with `scripts/create-test-user.js` (requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`), then run:
+
+```bash
+BASE_URL=https://your-deployment.example.com TEST_USER_EMAIL=... TEST_USER_PASSWORD=... npm run test:e2e:workflow
+```
+
+See `SETUP_AND_DEPLOY.md` (§ Test user and E2E workflow) for details.
+
 ### Run all E2E tests (including smoke):
 ```bash
 npm run test:e2e

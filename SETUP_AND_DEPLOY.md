@@ -139,6 +139,35 @@ docker run -p 3001:3001 \
 
 Then open http://localhost:3001 in a browser.
 
+### Test user and E2E workflow (deployed app)
+
+To sign in on the deployed web app and create a workflow (job) for testing, use a Supabase test user and the Playwright script.
+
+**1. Create a test user** (requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env` or env):
+
+```bash
+node scripts/create-test-user.js "autotest+e2e@coworktest.local" "YourPassword123!"
+```
+
+Output is JSON with `email`, `password`, and `id`. Use that email/password to sign in at the deployed URL.
+
+**2. Run deploy smoke check** (no auth):
+
+```bash
+node scripts/deploy-smoke-check.js https://your-deployment.example.com
+```
+
+**3. Sign in and create a workflow** (Playwright; no local server):
+
+```bash
+BASE_URL=https://your-deployment.example.com \
+TEST_USER_EMAIL=autotest+e2e@coworktest.local \
+TEST_USER_PASSWORD='YourPassword123!' \
+npm run test:e2e:workflow
+```
+
+Or run the script directly: `node scripts/e2e-signin-and-workflow.js`. Requires `npm install` (Playwright is a dev dependency). The script opens the app in a headless browser, signs in, goes to Workflows → New Workflow, and creates a “Chat message” job. Success means `POST /api/jobs` returns 200.
+
 ---
 
 ## What needs to be done
@@ -164,7 +193,10 @@ open-claude-cowork/
 │   ├── server.js        # Express; serves /api/* and (if renderer exists) static UI
 │   └── providers/
 ├── scripts/
-│   └── start-all.js     # Starts server then Electron
+│   ├── start-all.js           # Starts server then Electron
+│   ├── create-test-user.js    # Create Supabase Auth test user (env: SUPABASE_*)
+│   ├── deploy-smoke-check.js  # Hit deploy URL health/config/APIs (no auth)
+│   └── e2e-signin-and-workflow.js  # Playwright: sign in on deploy URL and create a job
 ├── Dockerfile           # For Coolify / Docker
 ├── .dockerignore
 ├── .env.example

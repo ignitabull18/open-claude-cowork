@@ -646,6 +646,9 @@
       selectedLabelIds.push(cb.value);
     });
 
+    const saveBtn = $('taskModalSaveBtn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+
     try {
       let savedTask;
       if (isEdit) {
@@ -660,6 +663,9 @@
         ]);
       } else {
         savedTask = await api().createTask(data);
+        if (!savedTask) {
+          throw new Error('Task could not be saved. The Tasks database table may not be set up yet. Please run the migration (003_tasks.sql) in Supabase.');
+        }
         if (selectedLabelIds.length > 0) {
           await Promise.all(selectedLabelIds.map(lid => api().assignTaskLabel(savedTask.id, lid)));
         }
@@ -668,6 +674,9 @@
       await load();
     } catch (err) {
       console.error('Save task failed:', err);
+      alert('Save failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
     }
   }
 
