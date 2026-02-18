@@ -784,9 +784,9 @@ let appErrorTimer = null;
 // Model configurations per provider
 const providerModels = {
   claude: [
-    { value: 'claude-opus-4-5-20250514', label: 'Opus 4.5', desc: 'Most capable for complex work' },
-    { value: 'claude-sonnet-4-5-20250514', label: 'Sonnet 4.5', desc: 'Best for everyday tasks', default: true },
-    { value: 'claude-haiku-4-5-20250514', label: 'Haiku 4.5', desc: 'Fastest for quick answers' }
+    { value: 'claude-opus-4-5-20250514', label: 'Claude Opus 4.5', desc: 'Most capable for complex work' },
+    { value: 'claude-sonnet-4-5-20250514', label: 'Claude Sonnet 4.5', desc: 'Best for everyday tasks', default: true },
+    { value: 'claude-haiku-4-5-20250514', label: 'Claude Haiku 4.5', desc: 'Fastest for quick answers' }
   ]
 };
 
@@ -879,6 +879,14 @@ function showAppAfterAuth(session) {
   const navSignOutBtn = document.getElementById('navSignOutBtn');
   if (navSignOutBtn) {
     navSignOutBtn.classList.remove('hidden');
+  }
+
+  // Show Account section in Settings
+  const settingsAccountSection = document.getElementById('settingsAccountSection');
+  if (settingsAccountSection) {
+    settingsAccountSection.style.display = '';
+    const userInfoEl = document.getElementById('settingsUserInfo');
+    if (userInfoEl && user) userInfoEl.textContent = user.email || '';
   }
 
   // Show search bar when authenticated with API
@@ -2677,22 +2685,43 @@ function setupEventListeners() {
   // Plugin settings
   if (settingsInstallPluginBtn) settingsInstallPluginBtn.addEventListener('click', installPlugin);
 
-  // File attachment buttons
-  const homeAttachBtn = document.getElementById('homeAttachBtn');
-  const chatAttachBtn = document.getElementById('chatAttachBtn');
+  // File attachment inputs
   const homeFileInput = document.getElementById('homeFileInput');
   const chatFileInput = document.getElementById('chatFileInput');
-
-  homeAttachBtn.addEventListener('click', () => homeFileInput.click());
-  chatAttachBtn.addEventListener('click', () => chatFileInput.click());
   homeFileInput.addEventListener('change', (e) => handleFileSelect(e, 'home'));
   chatFileInput.addEventListener('change', (e) => handleFileSelect(e, 'chat'));
 
-  // Vault picker buttons
+  // Unified attach popovers
+  function setupAttachPopover(context) {
+    const containerId = context === 'home' ? 'homeAttachContainer' : 'chatAttachContainer';
+    const toggleBtnId = context === 'home' ? 'homeAttachBtn' : 'chatAttachBtn';
+    const popoverId = context === 'home' ? 'homeAttachPopover' : 'chatAttachPopover';
+    const fileBtn = document.getElementById(context === 'home' ? 'homeAttachFileBtn' : 'chatAttachFileBtn');
+    const fileInput = context === 'home' ? homeFileInput : chatFileInput;
+    const vaultBtn = document.getElementById(context === 'home' ? 'homeVaultPickerBtn' : 'chatVaultPickerBtn');
+
+    const toggleBtn = document.getElementById(toggleBtnId);
+    const popover = document.getElementById(popoverId);
+    if (!toggleBtn || !popover) return;
+
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      popover.classList.toggle('hidden');
+    });
+    if (fileBtn) fileBtn.addEventListener('click', () => { popover.classList.add('hidden'); fileInput.click(); });
+    if (vaultBtn) vaultBtn.addEventListener('click', () => { popover.classList.add('hidden'); openVaultPicker(context); });
+
+    document.addEventListener('click', (e) => {
+      const container = document.getElementById(containerId);
+      if (container && !container.contains(e.target)) popover.classList.add('hidden');
+    }, true);
+  }
+  setupAttachPopover('home');
+  setupAttachPopover('chat');
+
+  // Vault picker buttons (also wired via popover above; these are kept for direct access)
   const homeVaultPickerBtn = document.getElementById('homeVaultPickerBtn');
   const chatVaultPickerBtn = document.getElementById('chatVaultPickerBtn');
-  if (homeVaultPickerBtn) homeVaultPickerBtn.addEventListener('click', () => openVaultPicker('home'));
-  if (chatVaultPickerBtn) chatVaultPickerBtn.addEventListener('click', () => openVaultPicker('chat'));
 
   const newFolderBtn = document.getElementById('newFolderBtn');
   if (newFolderBtn) newFolderBtn.addEventListener('click', () => createFolder(currentFolderType));
@@ -2718,6 +2747,10 @@ function setupEventListeners() {
   if (navSignOutBtn) {
     navSignOutBtn.addEventListener('click', handleSignOut);
   }
+
+  // Settings page sign-out button
+  const settingsSignOutBtn = document.getElementById('settingsSignOutBtn');
+  if (settingsSignOutBtn) settingsSignOutBtn.addEventListener('click', handleSignOut);
 
   // Setup dropdowns
   setupDropdowns();
@@ -3294,14 +3327,13 @@ function showView(viewName) {
   });
 
   // Handle side panel visibility
-  // Keep it visible for home, chat, reports, and jobs
+  // Show for home, chat, reports, and jobs; hide entirely for tasks/vault/settings/database
   const sidebarEnabledViews = ['home', 'chat', 'reports', 'jobs'];
   const isSidebarEnabled = sidebarEnabledViews.includes(viewName);
-  
+
   if (leftSidebar) {
-    if (!isSidebarEnabled && !leftSidebar.classList.contains('collapsed')) {
-      toggleLeftSidebar();
-    } else if (isSidebarEnabled && leftSidebar.classList.contains('collapsed')) {
+    leftSidebar.classList.toggle('hidden', !isSidebarEnabled);
+    if (isSidebarEnabled && leftSidebar.classList.contains('collapsed')) {
       toggleLeftSidebar();
     }
   }
@@ -5504,6 +5536,9 @@ function setupJobsEventListeners() {
   const jobFormSave = document.getElementById('jobSaveBtn');
   if (jobFormSave) jobFormSave.addEventListener('click', () => saveJob());
 
+  const jobSchedulePreset = document.getElementById('jobSchedulePreset');
+  if (jobSchedulePreset) jobSchedulePreset.addEventListener('change', () => applySchedulePreset());
+
   const jobTypeSelect = document.getElementById('jobType');
   if (jobTypeSelect) jobTypeSelect.addEventListener('change', () => {
     const val = jobTypeSelect.value;
@@ -5523,7 +5558,69 @@ function setupJobsEventListeners() {
     document.getElementById('jobChatMessagePromptField')?.classList.toggle('hidden', val !== 'chat_message');
     document.getElementById('jobChatMessageProviderField')?.classList.toggle('hidden', val !== 'chat_message');
     document.getElementById('jobChatMessageMaxTurnsField')?.classList.toggle('hidden', val !== 'chat_message');
+    document.getElementById('jobRunWorkflowField')?.classList.toggle('hidden', val !== 'run_workflow');
   });
+}
+
+// Maps a saved job back to its friendly schedule preset value
+function jobToSchedulePreset(job) {
+  if (!job) return 'once';
+  if (job.job_type === 'one_time') return 'once';
+  if (job.job_type === 'recurring') {
+    if (job.interval_seconds === 3600) return 'hourly';
+    return 'custom';
+  }
+  if (job.job_type === 'cron') {
+    if (job.cron_expression === '0 8 * * *') return 'daily';
+    if (job.cron_expression === '0 8 * * 1') return 'weekly';
+    if (job.cron_expression === '0 8 1 * *') return 'monthly';
+    return 'custom';
+  }
+  return 'once';
+}
+
+// Applies the schedule preset selection to the underlying hidden type/cron/interval fields
+function applySchedulePreset() {
+  const preset = document.getElementById('jobSchedulePreset')?.value || 'once';
+  const isCustom = preset === 'custom';
+  document.getElementById('jobTypeField')?.classList.toggle('hidden', !isCustom);
+  document.getElementById('jobIntervalField')?.classList.toggle('hidden', true);
+  document.getElementById('jobCronField')?.classList.toggle('hidden', true);
+
+  const typeEl = document.getElementById('jobType');
+  const cronEl = document.getElementById('jobCron');
+  const intervalEl = document.getElementById('jobInterval');
+
+  switch (preset) {
+    case 'once':
+      document.getElementById('jobExecuteAtField')?.classList.remove('hidden');
+      if (typeEl) typeEl.value = 'one_time';
+      break;
+    case 'hourly':
+      document.getElementById('jobExecuteAtField')?.classList.add('hidden');
+      if (typeEl) typeEl.value = 'recurring';
+      if (intervalEl) intervalEl.value = '3600';
+      break;
+    case 'daily':
+      document.getElementById('jobExecuteAtField')?.classList.add('hidden');
+      if (typeEl) typeEl.value = 'cron';
+      if (cronEl) cronEl.value = '0 8 * * *';
+      break;
+    case 'weekly':
+      document.getElementById('jobExecuteAtField')?.classList.add('hidden');
+      if (typeEl) typeEl.value = 'cron';
+      if (cronEl) cronEl.value = '0 8 * * 1';
+      break;
+    case 'monthly':
+      document.getElementById('jobExecuteAtField')?.classList.add('hidden');
+      if (typeEl) typeEl.value = 'cron';
+      if (cronEl) cronEl.value = '0 8 1 * *';
+      break;
+    case 'custom':
+      document.getElementById('jobExecuteAtField')?.classList.add('hidden');
+      if (typeEl) typeEl.dispatchEvent(new Event('change'));
+      break;
+  }
 }
 
 function openJobForm(job) {
@@ -5536,6 +5633,12 @@ function openJobForm(job) {
 
   document.getElementById('jobName').value = job ? job.name : '';
   document.getElementById('jobDescription').value = job ? (job.description || '') : '';
+
+  // Set human-friendly schedule preset first
+  const preset = jobToSchedulePreset(job);
+  const presetEl = document.getElementById('jobSchedulePreset');
+  if (presetEl) { presetEl.value = preset; applySchedulePreset(); }
+
   document.getElementById('jobType').value = job ? job.job_type : 'one_time';
   document.getElementById('jobType').dispatchEvent(new Event('change'));
   document.getElementById('jobActionType').value = job ? job.action_type : 'report_generation';
@@ -5560,9 +5663,12 @@ function openJobForm(job) {
       document.getElementById('jobChatMessagePrompt').value = cfg.prompt || '';
       document.getElementById('jobChatMessageProvider').value = cfg.provider || cfg.providerName || 'claude';
       document.getElementById('jobChatMessageMaxTurns').value = cfg.maxTurns || '';
+    } else if (job.action_type === 'run_workflow') {
+      document.getElementById('jobWorkflowId').value = cfg.workflowId || '';
     }
   }
   loadSavedReportsForJobForm();
+  loadSavedWorkflowsForJobForm();
 }
 
 async function loadSavedReportsForJobForm() {
@@ -5588,6 +5694,33 @@ async function loadSavedReportsForJobForm() {
     const opt = document.createElement('option');
     opt.value = '';
     opt.textContent = 'No reports available';
+    select.appendChild(opt);
+  }
+}
+
+async function loadSavedWorkflowsForJobForm() {
+  if (!useApi()) return;
+  const select = document.getElementById('jobWorkflowId');
+  if (!select) return;
+  try {
+    const data = await window.electronAPI.getWorkflows();
+    const list = Array.isArray(data) ? data : (data.workflows || data.data || []);
+    select.textContent = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select a workflow...';
+    select.appendChild(placeholder);
+    list.forEach(w => {
+      const opt = document.createElement('option');
+      opt.value = w.id;
+      opt.textContent = w.name || w.id;
+      select.appendChild(opt);
+    });
+  } catch (err) {
+    select.textContent = '';
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No workflows available';
     select.appendChild(opt);
   }
 }
@@ -5631,7 +5764,7 @@ async function saveJob() {
       showAppError('Chat message jobs require a prompt');
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.textContent = 'Save';
+        saveBtn.textContent = 'Save Workflow';
       }
       return;
     }
@@ -5647,6 +5780,8 @@ async function saveJob() {
     }
 
     jobData.action_config = actionConfig;
+  } else if (actionType === 'run_workflow') {
+    jobData.action_config = { workflowId: document.getElementById('jobWorkflowId')?.value || '' };
   }
 
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
@@ -5662,7 +5797,7 @@ async function saveJob() {
     console.error('Save job error:', err);
     showAppError('Error saving job: ' + err.message);
   } finally {
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Workflow'; }
   }
 }
 
@@ -5774,7 +5909,11 @@ async function loadJobs() {
   } catch (err) {
     container.textContent = '';
     const unavailable = document.getElementById('jobsUnavailable');
-    if (unavailable) unavailable.classList.remove('hidden');
+    if (unavailable) {
+      const p = unavailable.querySelector('p');
+      if (p) p.textContent = useApi() ? 'Could not load workflows. Check your connection.' : 'Sign in to use Workflows';
+      unavailable.classList.remove('hidden');
+    }
   }
 }
 

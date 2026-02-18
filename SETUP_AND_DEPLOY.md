@@ -112,8 +112,11 @@ npm start
 | `ANTHROPIC_API_KEY`  | Yes      | From Anthropic console         |
 | `COMPOSIO_API_KEY`   | Yes      | From Composio                  |
 | `PORT`               | Optional | Coolify often sets this        |
+| `CORS_ORIGINS`       | Yes (prod) | In production, set to your app origin (e.g. `https://cowork.ignitabull.org`). If unset, no origins are allowed. |
 
 Do **not** put `.env` in the image; use Coolify’s env/secrets.
+
+Run `npm audit` (and `cd server && npm audit`) periodically; apply `npm audit fix` where safe. Some server dev dependencies may report high severity and require major version updates.
 
 ### Steps in Coolify
 
@@ -176,6 +179,20 @@ npm run test:e2e:workflow
 
 Or run the script directly: `node scripts/e2e-signin-and-workflow.js`. Requires `npm install` (Playwright is a dev dependency). The script opens the app in a headless browser, signs in, goes to Workflows → New Workflow, and creates a “Chat message” job. Success means `POST /api/jobs` returns 200.
 
+**4. Schedule workflows** (set cron/recurring on existing jobs by name):
+
+```bash
+BASE_URL=https://your-deployment.example.com TEST_USER_EMAIL=... TEST_USER_PASSWORD='...' npm run schedule:workflows
+```
+
+**5. Test that a scheduled run executes** (set one job to run "now", wait for scheduler, check executions):
+
+```bash
+BASE_URL=... TEST_USER_EMAIL=... TEST_USER_PASSWORD='...' npm run test:scheduled
+```
+
+Optional: `TEST_JOB_NAME=Reminder check` and `TEST_WAIT_SEC=90`.
+
 ---
 
 ## What needs to be done
@@ -205,7 +222,9 @@ open-claude-cowork/
 │   ├── create-test-user.js    # Create Supabase Auth test user (env: SUPABASE_*)
 │   ├── deploy-smoke-check.js  # Hit deploy URL health/config/APIs (no auth)
 │   ├── e2e-signin-and-workflow.js  # Playwright: sign in on deploy URL and create a job
-│   └── trigger-coolify-deploy.js   # Trigger Coolify deploy via API (env or 1Password)
+│   ├── trigger-coolify-deploy.js   # Trigger Coolify deploy via API (env or 1Password)
+│   ├── schedule-workflows.js       # PATCH jobs by name with cron/recurring (env: BASE_URL, TEST_USER_*)
+│   └── test-scheduled-run.js       # Set one job to run now, wait, assert execution (env: TEST_JOB_NAME, TEST_WAIT_SEC)
 ├── Dockerfile           # For Coolify / Docker
 ├── .dockerignore
 ├── .env.example

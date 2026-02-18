@@ -302,6 +302,11 @@
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return await response.json();
     },
+    getWorkflows: async function () {
+      const response = await fetch(apiUrl('/api/workflows'), { headers: buildHeaders() });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return await response.json();
+    },
 
     // ==================== TASKS ====================
     getTasks: async function (opts) {

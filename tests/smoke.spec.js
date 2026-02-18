@@ -282,7 +282,7 @@ test.describe('Open Claude Cowork - Smoke Tests', () => {
   test('should open Vault view', async ({ page }) => {
     await page.locator('#vaultSidebarBtn').click();
     await expect(page.locator('#vaultView')).toBeVisible();
-    await expect(page.locator('.vault-title')).toContainText('Assets Vault');
+    await expect(page.locator('.vault-title')).toContainText('Vault');
   });
 
   test('should display authentication skip option', async ({ page }) => {

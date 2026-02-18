@@ -114,7 +114,7 @@ test.describe('Visual tour', () => {
     // Vault
     await showView('vault');
     await expect(page.locator('#vaultView')).toBeVisible();
-    await expect(page.locator('.vault-title')).toContainText('Assets Vault');
+    await expect(page.locator('.vault-title')).toContainText('Vault');
     await screenshot('vault');
 
     // Back to home and trigger Chat view (type + send)

@@ -23,7 +23,10 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
     "test:smoke": "playwright test tests/smoke.spec.js",
-    "test:e2e:workflow": "node scripts/e2e-signin-and-workflow.js"
+    "test:e2e:workflow": "node scripts/e2e-signin-and-workflow.js",
+    "schedule:workflows": "node scripts/schedule-workflows.js",
+    "test:scheduled": "node scripts/test-scheduled-run.js",
+    "cleanup:e2e:workflows": "node scripts/cleanup-e2e-workflows.js"
   },
   "author": "",
   "license": "ISC",

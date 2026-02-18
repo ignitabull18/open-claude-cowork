@@ -61,7 +61,8 @@ const DEFAULT_CORS_ORIGINS = [
 const configuredOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
   : [];
-const allowedOrigins = new Set(configuredOrigins.length ? configuredOrigins : DEFAULT_CORS_ORIGINS);
+const defaultOrigins = process.env.NODE_ENV === 'production' ? [] : DEFAULT_CORS_ORIGINS;
+const allowedOrigins = new Set(configuredOrigins.length ? configuredOrigins : defaultOrigins);
 const allowNullOrigin =
   process.env.NODE_ENV === 'production'
     ? process.env.ALLOW_NULL_ORIGIN === 'true'

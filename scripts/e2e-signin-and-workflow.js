@@ -12,6 +12,10 @@ const { chromium } = require('playwright');
 const BASE_URL = (process.env.BASE_URL || 'https://cowork.ignitabull.org').replace(/\/$/, '');
 const EMAIL = process.env.TEST_USER_EMAIL || 'autotest+e2e@coworktest.local';
 const PASSWORD = process.env.TEST_USER_PASSWORD || 'TestPassword123!';
+const WORKFLOW_NAME = process.env.WORKFLOW_NAME || 'E2E test workflow';
+const WORKFLOW_DESCRIPTION = process.env.WORKFLOW_DESCRIPTION || 'Created by e2e-signin-and-workflow.js';
+const ACTION_TYPE = process.env.WORKFLOW_ACTION_TYPE || 'chat_message';
+const CHAT_PROMPT = process.env.WORKFLOW_CHAT_PROMPT || 'Say hello once.';
 
 async function main() {
   const browser = await chromium.launch({ headless: true });
@@ -45,12 +49,14 @@ async function main() {
     await page.waitForTimeout(300);
 
     const nameInput = page.locator('#jobName');
-    await nameInput.fill('E2E test workflow');
+    await nameInput.fill(WORKFLOW_NAME);
     const descInput = page.locator('#jobDescription');
-    await descInput.fill('Created by e2e-signin-and-workflow.js');
-    await page.selectOption('#jobActionType', 'chat_message');
+    await descInput.fill(WORKFLOW_DESCRIPTION);
+    await page.selectOption('#jobActionType', ACTION_TYPE);
     await page.waitForTimeout(200);
-    await page.locator('#jobChatMessagePrompt').fill('Say hello once.');
+    if (ACTION_TYPE === 'chat_message') {
+      await page.locator('#jobChatMessagePrompt').fill(CHAT_PROMPT);
+    }
     const [jobRes] = await Promise.all([
       page.waitForResponse(res => res.url().includes('/api/jobs') && res.request().method() === 'POST', { timeout: 10000 }).catch(() => null),
       page.locator('#jobSaveBtn').click()
@@ -64,7 +70,7 @@ async function main() {
     const success = jobRes && jobRes.ok();
 
     if (success) {
-      console.log('OK: Signed in and created workflow "E2E test workflow" at', BASE_URL);
+      console.log('OK: Signed in and created workflow "' + WORKFLOW_NAME + '" at', BASE_URL);
     } else {
       console.log('List:', (listText || '').slice(0, 200));
       await page.screenshot({ path: 'output/e2e-workflow-result.png' }).catch(() => {});

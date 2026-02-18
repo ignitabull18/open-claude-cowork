@@ -330,6 +330,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     if (!response.ok) throw new Error('HTTP ' + response.status);
     return await response.json();
   },
+  getWorkflows: async () => {
+    const response = await fetch(`${SERVER_URL}/api/workflows`, { headers: buildHeaders() });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return await response.json();
+  },
 
   // ==================== VAULT ====================
   getVaultFolders: async (parentId) => {

@@ -126,7 +126,7 @@ test.describe('Critical User Journeys', () => {
 
     await page.locator('#vaultSidebarBtn').click();
     await expect(page.locator('#vaultView')).toBeVisible();
-    await expect(page.locator('.vault-title')).toContainText('Assets Vault');
+    await expect(page.locator('.vault-title')).toContainText('Vault');
 
     await page.locator('.new-chat-sidebar-btn').click();
     await expect(page.locator('#homeView')).toBeVisible();
