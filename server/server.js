@@ -249,6 +249,7 @@ function applyUserSettingsToEnv(settings) {
   if (data.apiKeys?.smithery) process.env.SMITHERY_API_KEY = data.apiKeys.smithery;
   if (data.apiKeys?.dataforseoUsername) process.env.DATAFORSEO_USERNAME = data.apiKeys.dataforseoUsername;
   if (data.apiKeys?.dataforseoPassword) process.env.DATAFORSEO_PASSWORD = data.apiKeys.dataforseoPassword;
+  if (data.apiKeys?.postiz) process.env.POSTIZ_API_KEY = data.apiKeys.postiz;
 }
 
 function scheduleComposioSessionCleanup() {
@@ -319,7 +320,7 @@ function maskKey(value) {
 /** Sanitize MCP server name for use as object key; must not collide with built-in names. */
 function sanitizeMcpName(name, id) {
   const s = (name || id || 'unnamed').replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 64) || 'mcp';
-  const reserved = ['composio', 'smithery', 'dataforseo', 'dataforseo_extra', 'browser'];
+  const reserved = ['composio', 'smithery', 'dataforseo', 'dataforseo_extra', 'browser', 'postiz'];
   if (reserved.includes(s)) return `user_${id || 'mcp'}`;
   return s;
 }
@@ -375,6 +376,7 @@ const SMITHERY_DEFAULT_MCP_URL = 'https://exa.run.tools';
 const SMITHERY_API_BASE = 'https://api.smithery.ai';
 let defaultSmitheryMcpConfig = null; // { url, headers } or null
 let dataforseoMcpConfig = null; // { official, extra } or null
+let postizMcpConfig = null; // { command, args, environment } or null
 
 // Browser automation module state
 let browserServer = null;
@@ -541,6 +543,34 @@ function initializeDataforseoConfig() {
 }
 
 /**
+ * Build Postiz MCP config (local stdio server). Cached.
+ * Returns { command, args, environment } or null.
+ */
+function getPostizMcpConfig() {
+  if (postizMcpConfig) return postizMcpConfig;
+  const apiKey = process.env.POSTIZ_API_KEY;
+  if (!apiKey?.trim()) return null;
+  const env = { POSTIZ_API_KEY: apiKey.trim() };
+  if (process.env.POSTIZ_BASE_URL?.trim()) {
+    env.POSTIZ_BASE_URL = process.env.POSTIZ_BASE_URL.trim();
+  }
+  postizMcpConfig = {
+    command: 'node',
+    args: [path.join(__dirname, 'postiz-mcp.js')],
+    environment: env
+  };
+  return postizMcpConfig;
+}
+
+/** Pre-initialize Postiz MCP config when API key is set. */
+function initializePostizConfig() {
+  const config = getPostizMcpConfig();
+  if (config) {
+    console.log('[POSTIZ] MCP config ready (local stdio)');
+  }
+}
+
+/**
  * Build the MCP servers config used by the Claude provider.
  * Merges Composio (from session), Smithery (when key and connection exist), and user-defined MCP from user-settings.
  */
@@ -583,6 +613,12 @@ function buildMcpServers(composioSession) {
   if (dfsConfig) {
     mcpServers.dataforseo = { type: 'local', ...dfsConfig.official };
     mcpServers.dataforseo_extra = { type: 'local', ...dfsConfig.extra };
+  }
+
+  // Add Postiz social media MCP server
+  const ptzConfig = getPostizMcpConfig();
+  if (ptzConfig) {
+    mcpServers.postiz = { type: 'local', ...ptzConfig };
   }
 
   // Add MCP servers from enabled plugins
@@ -1909,6 +1945,7 @@ app.get('/api/tools/active', requireAuth, (req, res) => {
       else if (key === 'documents') name = 'Document Generation';
       else if (key === 'dataforseo') name = 'DataForSEO (Official)';
       else if (key === 'dataforseo_extra') name = 'DataForSEO (Extra)';
+      else if (key === 'postiz') name = 'Postiz (Social Media)';
       
       return {
         id: key,
@@ -1942,7 +1979,8 @@ app.get('/api/settings', requireAuth, rateLimit.settings, (_req, res) => {
         composio: maskKey(data.apiKeys.composio),
         smithery: maskKey(data.apiKeys.smithery),
         dataforseoUsername: maskKey(data.apiKeys.dataforseoUsername),
-        dataforseoPassword: maskKey(data.apiKeys.dataforseoPassword)
+        dataforseoPassword: maskKey(data.apiKeys.dataforseoPassword),
+        postiz: maskKey(data.apiKeys.postiz)
       },
       mcpServers: data.mcpServers,
       browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 },
@@ -1965,6 +2003,7 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
     const prevSmitheryKey = data.apiKeys.smithery;
     const prevDfsUser = data.apiKeys.dataforseoUsername;
     const prevDfsPass = data.apiKeys.dataforseoPassword;
+    const prevPostizKey = data.apiKeys.postiz;
 
     if (body.apiKeys && typeof body.apiKeys === 'object') {
       if (body.apiKeys.anthropic !== undefined) data.apiKeys.anthropic = body.apiKeys.anthropic ? String(body.apiKeys.anthropic).trim() : '';
@@ -1972,6 +2011,7 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
       if (body.apiKeys.smithery !== undefined) data.apiKeys.smithery = body.apiKeys.smithery ? String(body.apiKeys.smithery).trim() : '';
       if (body.apiKeys.dataforseoUsername !== undefined) data.apiKeys.dataforseoUsername = body.apiKeys.dataforseoUsername ? String(body.apiKeys.dataforseoUsername).trim() : '';
       if (body.apiKeys.dataforseoPassword !== undefined) data.apiKeys.dataforseoPassword = body.apiKeys.dataforseoPassword ? String(body.apiKeys.dataforseoPassword).trim() : '';
+      if (body.apiKeys.postiz !== undefined) data.apiKeys.postiz = body.apiKeys.postiz ? String(body.apiKeys.postiz).trim() : '';
     }
     if (body.mcpServers !== undefined) {
       if (!Array.isArray(body.mcpServers)) {
@@ -2072,6 +2112,7 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
     process.env.SMITHERY_API_KEY = data.apiKeys.smithery || '';
     process.env.DATAFORSEO_USERNAME = data.apiKeys.dataforseoUsername || '';
     process.env.DATAFORSEO_PASSWORD = data.apiKeys.dataforseoPassword || '';
+    process.env.POSTIZ_API_KEY = data.apiKeys.postiz || '';
     if (prevComposioKey !== data.apiKeys.composio) {
       composioSessions.clear();
       defaultComposioSession = null;
@@ -2086,6 +2127,10 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
       dataforseoMcpConfig = null;
       console.log('[SETTINGS] DataForSEO credentials changed; cleared MCP config cache');
     }
+    if (prevPostizKey !== data.apiKeys.postiz) {
+      postizMcpConfig = null;
+      console.log('[SETTINGS] Postiz key changed; cleared MCP config cache');
+    }
 
     const response = {
       apiKeys: {
@@ -2093,7 +2138,8 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
         composio: maskKey(data.apiKeys.composio),
         smithery: maskKey(data.apiKeys.smithery),
         dataforseoUsername: maskKey(data.apiKeys.dataforseoUsername),
-        dataforseoPassword: maskKey(data.apiKeys.dataforseoPassword)
+        dataforseoPassword: maskKey(data.apiKeys.dataforseoPassword),
+        postiz: maskKey(data.apiKeys.postiz)
       },
       mcpServers: data.mcpServers,
       browser: data.browser || { enabled: false, mode: 'clawd', headless: false, backend: 'builtin', cdpPort: 9222 },
@@ -2330,6 +2376,7 @@ if (process.env.NODE_ENV !== 'test') {
   await initializeSmitheryConnection();
   scheduleComposioSessionCleanup();
   initializeDataforseoConfig();
+  initializePostizConfig();
   await initializeBrowser();
   initializeDocuments();
   initializePlugins();

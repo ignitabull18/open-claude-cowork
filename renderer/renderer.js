@@ -635,6 +635,9 @@ const settingsSmitheryToggle = document.getElementById('settingsSmitheryToggle')
 const settingsAnthropicMasked = document.getElementById('settingsAnthropicMasked');
 const settingsComposioMasked = document.getElementById('settingsComposioMasked');
 const settingsSmitheryMasked = document.getElementById('settingsSmitheryMasked');
+const settingsPostizKey = document.getElementById('settingsPostizKey');
+const settingsPostizToggle = document.getElementById('settingsPostizToggle');
+const settingsPostizMasked = document.getElementById('settingsPostizMasked');
 const settingsDataforseoUsername = document.getElementById('settingsDataforseoUsername');
 const settingsDataforseoPassword = document.getElementById('settingsDataforseoPassword');
 const settingsDataforseoUsernameToggle = document.getElementById('settingsDataforseoUsernameToggle');
@@ -2098,11 +2101,13 @@ async function loadSettings() {
     if (settingsAnthropicKey) settingsAnthropicKey.value = '';
     if (settingsComposioKey) settingsComposioKey.value = '';
     if (settingsSmitheryKey) settingsSmitheryKey.value = '';
+    if (settingsPostizKey) settingsPostizKey.value = '';
     if (settingsDataforseoUsername) settingsDataforseoUsername.value = '';
     if (settingsDataforseoPassword) settingsDataforseoPassword.value = '';
     if (settingsAnthropicMasked) settingsAnthropicMasked.textContent = data.apiKeys?.anthropic ? 'Set (' + data.apiKeys.anthropic + ')' : 'Not set';
     if (settingsComposioMasked) settingsComposioMasked.textContent = data.apiKeys?.composio ? 'Set (' + data.apiKeys.composio + ')' : 'Not set';
     if (settingsSmitheryMasked) settingsSmitheryMasked.textContent = data.apiKeys?.smithery ? 'Set (' + data.apiKeys.smithery + ')' : 'Not set';
+    if (settingsPostizMasked) settingsPostizMasked.textContent = data.apiKeys?.postiz ? 'Set (' + data.apiKeys.postiz + ')' : 'Not set';
     if (settingsDataforseoUsernameMasked) settingsDataforseoUsernameMasked.textContent = data.apiKeys?.dataforseoUsername ? 'Set (' + data.apiKeys.dataforseoUsername + ')' : 'Not set';
     if (settingsDataforseoPasswordMasked) settingsDataforseoPasswordMasked.textContent = data.apiKeys?.dataforseoPassword ? 'Set (' + data.apiKeys.dataforseoPassword + ')' : 'Not set';
     if (settingsKeysStatus) settingsKeysStatus.textContent = '';
@@ -2136,20 +2141,23 @@ async function saveSettingsKeys() {
   const anthropic = settingsAnthropicKey ? settingsAnthropicKey.value.trim() : '';
   const composio = settingsComposioKey ? settingsComposioKey.value.trim() : '';
   const smithery = settingsSmitheryKey ? settingsSmitheryKey.value.trim() : '';
+  const postiz = settingsPostizKey ? settingsPostizKey.value.trim() : '';
   const dataforseoUsername = settingsDataforseoUsername ? settingsDataforseoUsername.value.trim() : '';
   const dataforseoPassword = settingsDataforseoPassword ? settingsDataforseoPassword.value.trim() : '';
-  const body = { apiKeys: { anthropic: anthropic || '', composio: composio || '', smithery: smithery || '', dataforseoUsername: dataforseoUsername || '', dataforseoPassword: dataforseoPassword || '' } };
+  const body = { apiKeys: { anthropic: anthropic || '', composio: composio || '', smithery: smithery || '', postiz: postiz || '', dataforseoUsername: dataforseoUsername || '', dataforseoPassword: dataforseoPassword || '' } };
   try {
     const data = await window.electronAPI.updateSettings(body);
     cachedSettings.apiKeys = data.apiKeys;
     if (settingsAnthropicKey) settingsAnthropicKey.value = '';
     if (settingsComposioKey) settingsComposioKey.value = '';
     if (settingsSmitheryKey) settingsSmitheryKey.value = '';
+    if (settingsPostizKey) settingsPostizKey.value = '';
     if (settingsDataforseoUsername) settingsDataforseoUsername.value = '';
     if (settingsDataforseoPassword) settingsDataforseoPassword.value = '';
     if (settingsAnthropicMasked) settingsAnthropicMasked.textContent = data.apiKeys?.anthropic ? 'Set (' + data.apiKeys.anthropic + ')' : 'Not set';
     if (settingsComposioMasked) settingsComposioMasked.textContent = data.apiKeys?.composio ? 'Set (' + data.apiKeys.composio + ')' : 'Not set';
     if (settingsSmitheryMasked) settingsSmitheryMasked.textContent = data.apiKeys?.smithery ? 'Set (' + data.apiKeys.smithery + ')' : 'Not set';
+    if (settingsPostizMasked) settingsPostizMasked.textContent = data.apiKeys?.postiz ? 'Set (' + data.apiKeys.postiz + ')' : 'Not set';
     if (settingsDataforseoUsernameMasked) settingsDataforseoUsernameMasked.textContent = data.apiKeys?.dataforseoUsername ? 'Set (' + data.apiKeys.dataforseoUsername + ')' : 'Not set';
     if (settingsDataforseoPasswordMasked) settingsDataforseoPasswordMasked.textContent = data.apiKeys?.dataforseoPassword ? 'Set (' + data.apiKeys.dataforseoPassword + ')' : 'Not set';
     showSettingsKeysStatus('Saved.');
@@ -2732,6 +2740,7 @@ function setupEventListeners() {
   if (settingsAnthropicToggle) settingsAnthropicToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsAnthropicKey, settingsAnthropicToggle));
   if (settingsComposioToggle) settingsComposioToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsComposioKey, settingsComposioToggle));
   if (settingsSmitheryToggle) settingsSmitheryToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsSmitheryKey, settingsSmitheryToggle));
+  if (settingsPostizToggle) settingsPostizToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsPostizKey, settingsPostizToggle));
   if (settingsDataforseoUsernameToggle) settingsDataforseoUsernameToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsDataforseoUsername, settingsDataforseoUsernameToggle));
   if (settingsDataforseoPasswordToggle) settingsDataforseoPasswordToggle.addEventListener('click', () => toggleSettingsKeyVisibility(settingsDataforseoPassword, settingsDataforseoPasswordToggle));
   if (settingsAddMcpBtn) settingsAddMcpBtn.addEventListener('click', () => openSettingsMcpForm(null));

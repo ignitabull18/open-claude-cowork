@@ -65,7 +65,8 @@ export function normalizeUserSettings(raw) {
       composio: typeof apiKeys.composio === 'string' ? apiKeys.composio : '',
       smithery: typeof apiKeys.smithery === 'string' ? apiKeys.smithery : '',
       dataforseoUsername: typeof apiKeys.dataforseoUsername === 'string' ? apiKeys.dataforseoUsername : '',
-      dataforseoPassword: typeof apiKeys.dataforseoPassword === 'string' ? apiKeys.dataforseoPassword : ''
+      dataforseoPassword: typeof apiKeys.dataforseoPassword === 'string' ? apiKeys.dataforseoPassword : '',
+      postiz: typeof apiKeys.postiz === 'string' ? apiKeys.postiz : ''
     },
     mcpServers: Array.isArray(input.mcpServers) ? input.mcpServers : [],
     browser: {

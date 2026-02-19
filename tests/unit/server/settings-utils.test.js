@@ -27,6 +27,7 @@ function sanitizeMcpName(name, id) {
     'dataforseo',
     'dataforseo_extra',
     'browser',
+    'postiz',
   ];
   if (reserved.includes(s)) return `user_${id || 'mcp'}`;
   return s;
@@ -144,6 +145,10 @@ describe('sanitizeMcpName', () => {
 
   it('prefixes reserved name "browser" with user_', () => {
     expect(sanitizeMcpName('browser', 'id5')).toBe('user_id5');
+  });
+
+  it('prefixes reserved name "postiz" with user_', () => {
+    expect(sanitizeMcpName('postiz', 'id6')).toBe('user_id6');
   });
 
   it('uses "mcp" as id fallback when reserved name matches and id is null', () => {
