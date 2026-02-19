@@ -3,1471 +3,618 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta
-    http-equiv="Content-Security-Policy"
-    content="default-src 'self'; base-uri 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' http://localhost:3001 https://*.supabase.co; font-src 'self' https://fonts.gstatic.com; object-src 'none'; frame-src 'none';"
-  >
-  <title>Cowork</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' http://localhost:3001 https://*.supabase.co; font-src 'self' https://fonts.gstatic.com; object-src 'none'; frame-src 'none';">
+  <title>Open Claude Cowork</title>
   <link rel="stylesheet" href="style.css">
-  <script
-    src="https://cdn.jsdelivr.net/npm/marked@17.0.2/lib/marked.umd.js"
-    integrity="sha384-HQ7B/VBz5B0fo8GBiEFD/BZsAVXM9iDzC+hpeY1M1cpYezmRrwJSQh5MkTEI8G/H"
-    crossorigin="anonymous"
-  ></script>
-  <script
-    src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
-    integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
-    crossorigin="anonymous"
-  ></script>
-  <script
-    src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js"
-    integrity="sha384-80VlBZnyAwkkqtSfg5NhPyZff6nU4K/qniLBL8Jnm4KDv6jZhLiYtJbhglg/i9ww"
-    crossorigin="anonymous"
-  ></script>
-  <script
-    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.95.3/dist/umd/supabase.min.js"
-    integrity="sha384-aRAaCbKYByQpx0fjPuC0PQ9P9moWMEsHXP9tyzP7tbyD5fPK6oTp+THsxdWiq02L"
-    crossorigin="anonymous"
-  ></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@17.0.2/lib/marked.umd.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.95.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
   <script src="web-api.js"></script>
   <script src="auth.js"></script>
 </head>
 <body>
+  <!-- Backend Health Banner -->
   <div id="backendBanner" class="backend-banner hidden" role="alert">
-    <strong>Backend not running.</strong> From project root run: <code>npm run start:all</code>
-    <span class="banner-divider">or</span> <code>cd server && npm start</code> then <code>npm start</code>
+    <strong>Backend offline</strong> &mdash; Run <code>npm run start:all</code> to connect.
     <button type="button" id="backendBannerDismiss">Dismiss</button>
   </div>
+
   <div class="app-container">
-    <!-- Navigation Rail - Core Feature Switching -->
+    <!-- 1. Navigation Rail -->
     <nav class="nav-rail">
       <div class="nav-rail-top">
         <button class="nav-rail-item active" data-view="home" title="Home">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
         </button>
         <button class="nav-rail-item" id="chatSidebarBtn" data-view="chat" title="Chats">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
         </button>
         <div class="nav-rail-divider"></div>
+        <button class="nav-rail-item" id="jobsSidebarBtn" data-view="jobs" title="Workflows">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        </button>
         <button class="nav-rail-item" id="vaultSidebarBtn" data-view="vault" title="Vault">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
         </button>
         <button class="nav-rail-item" id="reportsSidebarBtn" data-view="reports" title="Reports">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="20" x2="18" y2="10"></line>
-            <line x1="12" y1="20" x2="12" y2="4"></line>
-            <line x1="6" y1="20" x2="6" y2="14"></line>
-          </svg>
-        </button>
-        <button class="nav-rail-item" id="jobsSidebarBtn" data-view="jobs" title="Workflows">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
         </button>
         <button class="nav-rail-item hidden" id="navDbBtn" data-view="database" title="Database Explorer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
         </button>
       </div>
       <div class="nav-rail-bottom">
         <button class="nav-rail-item" id="settingsSidebarBtn" data-view="settings" title="Settings">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </button>
-        <button class="nav-rail-item hidden" id="navSignOutBtn" title="Sign Out" style="display:none!important">
+        <!-- User Avatar Placeholder -->
+        <div class="nav-rail-item hidden" id="navSignOutBtn" title="Sign Out">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        </div>
       </div>
     </nav>
 
-    <!-- Left Sidebar - Side Panel (e.g. Chat History) -->
+    <!-- 2. Left Sidebar (History) -->
     <aside class="left-sidebar" id="leftSidebar">
       <div class="left-sidebar-header">
         <button class="new-chat-sidebar-btn" onclick="startNewChat()" title="New chat">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          <span>New Chat</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          New Chat
         </button>
-        <button class="sidebar-collapse-btn" id="leftSidebarToggle" title="Collapse sidebar" aria-label="Collapse sidebar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
+        <button class="sidebar-collapse-btn" id="leftSidebarToggle" title="Collapse sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
         </button>
       </div>
-      <div class="search-container hidden" id="searchContainer">
-        <input type="text" class="search-input" id="searchInput" placeholder="Search messages..." autocomplete="off" />
-      </div>
-      <div class="search-results hidden" id="searchResults"></div>
-      
-      <!-- Folders Section -->
+
       <div class="sidebar-folders-section">
         <div class="folders-header">
-          <span class="folders-title" id="sidebarFoldersTitle">Folders</span>
+          <span id="sidebarFoldersTitle">Folders</span>
           <button class="new-folder-btn" id="newFolderBtn" title="New Folder">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
           </button>
         </div>
-        <div class="chat-folders-list" id="chatFoldersList">
-          <!-- Folders will be added here -->
-        </div>
-        <div class="workflow-folders-list hidden" id="workflowFoldersList">
-          <!-- Workflow Folders will be added here -->
-        </div>
-        <div class="report-folders-list hidden" id="reportFoldersList">
-          <!-- Report Folders will be added here -->
-        </div>
+        <div class="chat-folders-list" id="chatFoldersList"></div>
+        <div class="workflow-folders-list hidden" id="workflowFoldersList"></div>
+        <div class="report-folders-list hidden" id="reportFoldersList"></div>
       </div>
 
       <div class="chat-history-list" id="chatHistoryList">
-        <!-- Chat history items will be added here -->
+        <!-- History items -->
       </div>
-      <div class="left-sidebar-footer">
+      <div class="left-sidebar-footer" style="padding:16px;">
         <span class="user-email-label" id="userEmailLabel"></span>
       </div>
     </aside>
 
     <!-- Left Sidebar Expand Button (visible when collapsed) -->
-    <button class="left-sidebar-expand-btn" id="leftSidebarExpand" title="Expand chat history" aria-label="Expand chat history">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="9 18 15 12 9 6"></polyline>
-      </svg>
+    <button class="left-sidebar-expand-btn hidden" id="leftSidebarExpand" title="Expand chat history">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
     </button>
 
-    <!-- Main Content -->
-    <div class="main-content">
-      <!-- Auth View (shown when not logged in) -->
+    <!-- 3. Main Content -->
+    <main class="main-content">
+      
+      <!-- AUTH VIEW -->
       <div class="auth-view hidden" id="authView">
         <div class="auth-container">
-          <h1 class="auth-title">Open Claude Cowork</h1>
-          <p class="auth-subtitle">Sign in to sync your chats across devices</p>
-          <form id="authForm" class="auth-form">
-            <div class="auth-tabs">
-              <button type="button" class="auth-tab active" data-tab="signin">Sign In</button>
-              <button type="button" class="auth-tab" data-tab="signup">Sign Up</button>
-            </div>
-            <div class="auth-field">
-              <label for="authEmail">Email</label>
-              <input type="email" id="authEmail" name="email" class="auth-input" placeholder="you@example.com" required autocomplete="username" />
-            </div>
-            <div class="auth-field">
-              <label for="authPassword">Password</label>
-              <input type="password" id="authPassword" name="password" class="auth-input" placeholder="Password" required minlength="6" autocomplete="current-password" />
-            </div>
-            <div class="auth-field auth-signup-field hidden" id="authDisplayNameField">
-              <label for="authDisplayName">Display Name</label>
-              <input type="text" id="authDisplayName" class="auth-input" placeholder="Your name" />
+          <h1 class="auth-title">Welcome Back</h1>
+          <p class="auth-subtitle">Sign in to your AI workspace</p>
+          <form id="authForm">
+            <input type="email" id="authEmail" class="auth-input" placeholder="name@company.com" required>
+            <input type="password" id="authPassword" class="auth-input" placeholder="Password" required>
+            <div id="authDisplayNameField" class="hidden">
+              <input type="text" id="authDisplayName" class="auth-input" placeholder="Display Name">
             </div>
             <button type="submit" class="auth-submit-btn" id="authSubmitBtn">Sign In</button>
-            <p class="auth-error hidden" id="authError"></p>
-            <p class="auth-info hidden" id="authInfo"></p>
+            <div style="margin-top:16px; text-align:center; font-size:13px;">
+              <span class="auth-tab active" data-tab="signin" style="cursor:pointer; color:var(--text-primary);">Sign In</span>
+              <span style="color:var(--text-tertiary); margin:0 8px;">|</span>
+              <span class="auth-tab" data-tab="signup" style="cursor:pointer; color:var(--text-secondary);">Sign Up</span>
+            </div>
+            <p class="auth-options">
+              <button type="button" class="auth-link hidden" id="authForgotPasswordBtn" style="background:none;border:none;color:var(--text-tertiary);cursor:pointer;margin-top:8px;">Forgot password?</button>
+            </p>
+            <p class="auth-error hidden" id="authError" style="color:var(--accent-danger); margin-top:12px; font-size:13px; text-align:center;"></p>
+            <p class="auth-info hidden" id="authInfo" style="color:var(--accent-success); margin-top:12px; font-size:13px; text-align:center;"></p>
+            
+            <!-- Hidden but required by JS -->
+            <button type="button" id="authSkipBtn" class="hidden"></button>
           </form>
         </div>
       </div>
 
-      <!-- Home View (shown when no messages) -->
+      <!-- HOME VIEW -->
       <div class="home-view" id="homeView">
-      <div class="greeting-section">
-        <div class="greeting">
-          <h1 class="greeting-text">Open Claude Cowork</h1>
-          <p class="tagline">Powered by Claude Code and Composio</p>
-        </div>
-      </div>
+        <h1 class="greeting-text">Open Claude Cowork</h1>
+        <p class="tagline">Your AI Operating System for Automation & Context</p>
 
-      <div class="quick-actions-grid">
-        <div class="quick-action-card" onclick="showView('jobs')">
-          <div class="quick-action-icon workflows">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
-          </div>
-          <div class="quick-action-info">
-            <div class="quick-action-title">Workflows</div>
-            <div class="quick-action-desc">Build, schedule & run automations</div>
-          </div>
-        </div>
-        <div class="quick-action-card" onclick="showView('vault')">
-          <div class="quick-action-icon vault">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            </svg>
-          </div>
-          <div class="quick-action-info">
-            <div class="quick-action-title">Vault</div>
-            <div class="quick-action-desc">Files & generated docs</div>
-          </div>
-        </div>
-        <div class="quick-action-card" onclick="showView('reports')">
-          <div class="quick-action-icon reports">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="20" x2="18" y2="10"></line>
-              <line x1="12" y1="20" x2="12" y2="4"></line>
-              <line x1="6" y1="20" x2="6" y2="14"></line>
-            </svg>
-          </div>
-          <div class="quick-action-info">
-            <div class="quick-action-title">Usage Reports</div>
-            <div class="quick-action-desc">Analytics & insights</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="input-container home-input">
-        <form id="homeForm" class="input-form">
-          <div class="input-wrapper">
-            <textarea
-              id="homeInput"
-              class="message-input"
-              placeholder="Ask me anything"
-              autocomplete="off"
-              rows="1"
-            ></textarea>
-            <div class="input-controls">
-              <div class="left-controls">
-                <input type="file" id="homeFileInput" class="file-input-hidden" multiple />
-                <!-- Unified attach button with popover -->
-                <div class="attach-popover-container" id="homeAttachContainer">
-                  <button type="button" class="control-btn attach-btn" id="homeAttachBtn" title="Attach" aria-label="Attach" aria-haspopup="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                    </svg>
-                  </button>
-                  <div class="attach-popover hidden" id="homeAttachPopover">
-                    <button type="button" class="attach-popover-item" id="homeAttachFileBtn">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
-                      Upload file
-                    </button>
-                    <button type="button" class="attach-popover-item" id="homeVaultPickerBtn">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/></svg>
-                      From Vault
-                    </button>
-                  </div>
-                </div>
-                <button type="button" class="control-btn thinking-btn" id="homeThinkingBtn" title="Extended thinking — uses more compute for complex reasoning (⇧⌘E)" aria-label="Extended thinking">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
-                  </svg>
-                </button>
-              </div>
-              <div class="right-controls">
-                <!-- Provider selector (hidden — single provider) -->
-                <div class="dropdown-container" id="homeProviderDropdown" style="display:none">
-                  <button type="button" class="provider-selector">
-                    <span class="provider-label">Claude</span>
-                  </button>
-                  <div class="dropdown-menu provider-menu">
-                    <div class="dropdown-item selected" data-value="claude">
-                      <div class="item-row"><span class="item-label">Claude</span></div>
-                      <span class="item-desc">Claude Agent SDK</span>
-                    </div>
-                  </div>
-                </div>
-                <!-- Model Selector Dropdown -->
-                <div class="dropdown-container" id="homeModelDropdown">
-                  <button type="button" class="model-selector">
-                    <span class="model-label">Claude Sonnet 4.5</span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                  </button>
-                  <div class="dropdown-menu model-menu" data-provider="claude">
-                    <div class="dropdown-item" data-value="claude-opus-4-5-20250514">
-                      <div class="item-row"><span class="item-label">Claude Opus 4.5</span></div>
-                      <span class="item-desc">Most capable for complex work</span>
-                    </div>
-                    <div class="dropdown-item selected" data-value="claude-sonnet-4-5-20250514">
-                      <div class="item-row">
-                        <span class="item-label">Claude Sonnet 4.5</span>
-                        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                      </div>
-                      <span class="item-desc">Best for everyday tasks</span>
-                    </div>
-                    <div class="dropdown-item" data-value="claude-haiku-4-5-20250514">
-                      <div class="item-row"><span class="item-label">Claude Haiku 4.5</span></div>
-                      <span class="item-desc">Fastest for quick answers</span>
-                    </div>
-                  </div>
-                </div>
-                <button type="submit" class="send-btn" id="homeSendBtn" disabled aria-label="Send message">
-                  <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <line x1="12" y1="19" x2="12" y2="5"></line>
-                    <polyline points="5 12 12 5 19 12"></polyline>
-                  </svg>
-                  <svg class="stop-icon hidden" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="6" y="6" width="12" height="12" rx="2"></rect>
-                  </svg>
-                </button>
-              </div>
+        <div class="quick-actions-grid">
+          <div class="quick-action-card" onclick="showView('jobs')">
+            <div class="quick-action-icon workflows">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+            <div>
+              <div class="quick-action-title">Workflows</div>
+              <div class="quick-action-desc">Automate tasks</div>
             </div>
           </div>
-        </form>
-      </div>
-    </div>
+          <div class="quick-action-card" onclick="showView('vault')">
+            <div class="quick-action-icon vault">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div>
+              <div class="quick-action-title">Vault</div>
+              <div class="quick-action-desc">Manage files</div>
+            </div>
+          </div>
+          <div class="quick-action-card" onclick="showView('reports')">
+            <div class="quick-action-icon reports">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+            </div>
+            <div>
+              <div class="quick-action-title">Analytics</div>
+              <div class="quick-action-desc">View usage</div>
+            </div>
+          </div>
+        </div>
 
-    <!-- Chat View (shown when there are messages) -->
-    <div class="chat-view hidden" id="chatView">
-      <div class="chat-main">
-        <header class="chat-header">
-          <button class="chat-title-btn">
-            <span id="chatTitle">New chat</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </button>
-          <button class="new-chat-btn" onclick="startNewChat()" title="New chat" aria-label="Start a new chat">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-          </button>
+        <div class="input-container home-input">
+          <form id="homeForm">
+            <div class="input-wrapper">
+              <textarea id="homeInput" class="message-input" placeholder="Ask Claude to do something..." rows="1"></textarea>
+              <div class="input-controls">
+                <div class="left-controls">
+                   <input type="file" id="homeFileInput" class="file-input-hidden" multiple />
+                   <button type="button" class="control-btn" id="homeAttachBtn" title="Attach">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                   </button>
+                   <button type="button" class="control-btn hidden" id="homeVaultPickerBtn"></button>
+                </div>
+                <div class="right-controls">
+                  <button type="submit" class="send-btn" id="homeSendBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- CHAT VIEW -->
+      <div class="chat-view hidden" id="chatView">
+        <div class="chat-main">
+          <header class="chat-header">
+            <button class="chat-title-btn">
+              <span id="chatTitle">New Chat</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div style="display:flex; gap:8px;">
+              <button class="control-btn" id="sidebarToggle" title="Toggle Context">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+              </button>
+            </div>
+          </header>
+
+          <!-- CONTEXT BAR (New Feature) -->
+          <div class="context-bar" id="contextBar">
+             <div class="context-pill" id="ctxProjectPill">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+               <span id="ctxProjectName">No Project</span>
+             </div>
+             <div class="context-pill hidden" id="ctxDbPill">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+               <span id="ctxDbCount">0 Tables</span>
+             </div>
+          </div>
+
+          <!-- SEARCH (Restored) -->
+          <div class="search-container hidden" id="searchContainer" style="padding: 0 24px;">
+            <input type="text" class="search-input" id="searchInput" placeholder="Search..." style="width:100%; padding:8px; border:1px solid var(--border-base); background:var(--bg-surface); color:var(--text-primary); border-radius:var(--radius-md);">
+          </div>
+          <div class="search-results hidden" id="searchResults"></div>
+
+          <div class="messages-container" id="chatMessages">
+            <!-- Messages go here -->
+          </div>
+
+          <div class="chat-input-wrapper">
+            <div class="input-container">
+              <form id="chatForm">
+                <div class="input-wrapper">
+                  <textarea id="messageInput" class="message-input" placeholder="Type a message..." rows="1"></textarea>
+                  <div class="input-controls">
+                    <div class="left-controls">
+                      <input type="file" id="chatFileInput" class="file-input-hidden" multiple />
+                      <button type="button" class="control-btn" id="chatAttachBtn" title="Attach">
+                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                      </button>
+                      <button type="button" class="control-btn hidden" id="chatVaultPickerBtn"></button>
+                      <button type="button" class="control-btn" id="chatThinkingBtn" title="Deep Thinking">
+                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      </button>
+                    </div>
+                    <div class="right-controls">
+                      <button type="submit" class="send-btn" id="chatSendBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+            <p class="disclaimer">AI can make mistakes. Verify important information.</p>
+          </div>
+        </div>
+
+        <!-- 4. Right Sidebar (Inspector) -->
+        <aside class="sidebar" id="sidebar">
+          <div class="sidebar-header">
+            <div class="sidebar-tabs" id="sidebarTabs">
+              <button class="sidebar-tab active" data-tab="context" id="tabContext">Context</button>
+              <button class="sidebar-tab" data-tab="progress" id="tabProgress">Progress</button>
+              <button class="sidebar-tab" data-tab="artifact" id="tabArtifact">Artifacts</button>
+            </div>
+          </div>
+          
+          <div class="sidebar-panel" id="contextPanel" style="padding:16px;">
+            <div class="settings-field">
+              <label>Project Name</label>
+              <input type="text" id="contextProjectName" class="settings-input" placeholder="Project Name">
+            </div>
+            <div class="settings-field">
+              <label>Description</label>
+              <textarea id="contextProjectDesc" class="settings-textarea" rows="2" placeholder="Goal..."></textarea>
+            </div>
+             <div class="settings-field">
+              <label>Active Instructions</label>
+              <textarea id="contextActiveInstructions" class="settings-textarea" rows="3" placeholder="Rules..."></textarea>
+            </div>
+            
+            <div class="settings-field">
+               <label>Database</label>
+               <div id="contextTableList" style="max-height:150px; overflow-y:auto; border:1px solid var(--border-base); border-radius:var(--radius-md); padding:8px;"></div>
+            </div>
+
+            <!-- Integrations Containers (Restored) -->
+            <div id="contextNotionList"></div>
+            <button id="contextPinNotionBtn" class="hidden"></button>
+            <div id="contextClickUpList"></div>
+            <button id="contextPinClickUpBtn" class="hidden"></button>
+            <div id="contextGDriveList"></div>
+            <button id="contextPinGDriveBtn" class="hidden"></button>
+            <div id="contextYouTubeList"></div>
+            <button id="contextPinYouTubeBtn" class="hidden"></button>
+            <div id="contextWebList"></div>
+            <input type="hidden" id="contextWebInput">
+            <button id="contextAddWebBtn" class="hidden"></button>
+
+             <div class="settings-field">
+               <label>Pinned Files</label>
+               <div id="contextPinnedAssets" style="max-height:150px; overflow-y:auto;"></div>
+               <button class="settings-save-btn" id="contextPinAssetBtn" style="width:100%; margin-top:8px;">+ Pin from Vault</button>
+            </div>
+             
+             <!-- Usage Meter (Restored elements) -->
+             <div style="margin-top:16px;">
+               <div id="contextUsageBar" style="height:4px; background:var(--bg-surface); border-radius:2px;"></div>
+               <div id="contextUsageValue" style="font-size:11px; color:var(--text-tertiary); text-align:right; margin-top:4px;">0 / 200k</div>
+             </div>
+
+             <button class="settings-save-btn" id="saveContextBtn" style="width:100%; margin-top:16px;">Update Context</button>
+          </div>
+
+          <div class="sidebar-panel hidden" id="progressPanel" style="padding:16px;">
+            <div class="empty-state" style="color:var(--text-secondary);">No active tasks</div>
+          </div>
+          
+          <div class="sidebar-panel hidden" id="artifactPanel" style="padding:16px;">
+             <!-- Artifact IDs -->
+             <div id="artifactLangBadge" class="hidden"></div>
+             <div id="artifactTitle" class="hidden"></div>
+             <div id="artifactVersionInfo" class="hidden"></div>
+             <button id="artifactCopyBtn" class="hidden"></button>
+             <button id="artifactDownloadBtn" class="hidden"></button>
+             <button id="artifactUndoBtn" class="hidden"></button>
+             <button id="artifactRedoBtn" class="hidden"></button>
+             <div id="codeEditorWrap" class="hidden"><textarea id="codeEditor"></textarea><div id="lineNumbers"></div></div>
+             <div id="docEditorWrap" class="hidden"><div id="docToolbar"></div><div id="docEditor"></div></div>
+             <div class="empty-state" style="color:var(--text-secondary);">Select an artifact</div>
+          </div>
+        </aside>
+      </div>
+      
+      <!-- Right Sidebar Expand Button -->
+      <button class="right-sidebar-expand-btn hidden" id="rightSidebarExpand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+
+      <!-- SELECTION TOOLBAR -->
+      <div id="selectionToolbar" class="hidden"></div>
+
+      <!-- WORKFLOWS VIEW -->
+      <div class="jobs-view hidden" id="jobsView">
+        <header class="jobs-header">
+          <button class="jobs-back-btn hidden" id="jobsBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+          <h1 class="jobs-title">Workflows</h1>
+          <button class="settings-save-btn" id="jobsNewBtn">New Workflow</button>
         </header>
+        <div class="jobs-content">
+          <div id="jobsList" class="quick-actions-grid" style="grid-template-columns: 1fr;"></div>
+          <div id="jobsUnavailable" class="hidden">Sign in required</div>
 
-        <div class="messages-container" id="chatMessages">
-          <!-- Messages will be added here dynamically -->
-        </div>
+          <!-- Workflow Form -->
+          <div id="jobsForm" class="hidden settings-section">
+             <h3 class="settings-section-title" id="jobsFormTitle">Workflow Builder</h3>
+             <div class="settings-field">
+                <label>Workflow Name</label>
+                <input type="text" id="jobName" class="settings-input" placeholder="e.g. Daily Digest">
+             </div>
+             <div class="settings-field">
+                <label>Description</label>
+                <input type="text" id="jobDescription" class="settings-input">
+             </div>
+             <div class="settings-field">
+                <label>Schedule</label>
+                <select id="jobSchedulePreset" class="settings-select">
+                   <option value="once">Run once</option>
+                   <option value="hourly">Every hour</option>
+                   <option value="daily">Every day</option>
+                </select>
+             </div>
+             <div id="jobExecuteAtField" class="settings-field"><label>Run At</label><input type="datetime-local" id="jobExecuteAt" class="settings-input"></div>
+             
+             <div class="settings-field">
+               <label>Action</label>
+               <select id="jobActionType" class="settings-select">
+                 <option value="chat_message">Chat Message</option>
+               </select>
+             </div>
 
-        <div class="chat-input-wrapper">
-          <div class="input-container">
-            <form id="chatForm" class="input-form">
-              <div class="input-wrapper">
-                <textarea
-                  id="messageInput"
-                  class="message-input"
-                  placeholder="Reply..."
-                  autocomplete="off"
-                  rows="1"
-                ></textarea>
-                <div class="input-controls">
-                  <div class="left-controls">
-                    <input type="file" id="chatFileInput" class="file-input-hidden" multiple />
-                    <!-- Unified attach button with popover -->
-                    <div class="attach-popover-container" id="chatAttachContainer">
-                      <button type="button" class="control-btn attach-btn" id="chatAttachBtn" title="Attach" aria-label="Attach" aria-haspopup="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                        </svg>
-                      </button>
-                      <div class="attach-popover hidden" id="chatAttachPopover">
-                        <button type="button" class="attach-popover-item" id="chatAttachFileBtn">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
-                          Upload file
-                        </button>
-                        <button type="button" class="attach-popover-item" id="chatVaultPickerBtn">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/></svg>
-                          From Vault
-                        </button>
-                      </div>
-                    </div>
-                    <button type="button" class="control-btn thinking-btn" id="chatThinkingBtn" title="Extended thinking — uses more compute for complex reasoning (⇧⌘E)" aria-label="Extended thinking">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                      </svg>
-                    </button>
-                  </div>
-                  <div class="right-controls">
-                    <!-- Provider selector (hidden — single provider) -->
-                    <div class="dropdown-container" id="chatProviderDropdown" style="display:none">
-                      <button type="button" class="provider-selector">
-                        <span class="provider-label">Claude</span>
-                      </button>
-                      <div class="dropdown-menu provider-menu">
-                        <div class="dropdown-item selected" data-value="claude">
-                          <div class="item-row"><span class="item-label">Claude</span></div>
-                          <span class="item-desc">Claude Agent SDK</span>
-                        </div>
-                      </div>
-                    </div>
-                    <!-- Model Selector Dropdown -->
-                    <div class="dropdown-container" id="chatModelDropdown">
-                      <button type="button" class="model-selector">
-                        <span class="model-label">Claude Sonnet 4.5</span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                      </button>
-                      <div class="dropdown-menu model-menu" data-provider="claude">
-                        <div class="dropdown-item" data-value="claude-opus-4-5-20250514">
-                          <div class="item-row"><span class="item-label">Claude Opus 4.5</span></div>
-                          <span class="item-desc">Most capable for complex work</span>
-                        </div>
-                        <div class="dropdown-item selected" data-value="claude-sonnet-4-5-20250514">
-                          <div class="item-row">
-                            <span class="item-label">Claude Sonnet 4.5</span>
-                            <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                          </div>
-                          <span class="item-desc">Best for everyday tasks</span>
-                        </div>
-                        <div class="dropdown-item" data-value="claude-haiku-4-5-20250514">
-                          <div class="item-row"><span class="item-label">Claude Haiku 4.5</span></div>
-                          <span class="item-desc">Fastest for quick answers</span>
-                        </div>
-                      </div>
-                    </div>
-                  <button type="submit" class="send-btn" id="chatSendBtn" disabled aria-label="Send message">
-                      <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <line x1="12" y1="19" x2="12" y2="5"></line>
-                        <polyline points="5 12 12 5 19 12"></polyline>
-                      </svg>
-                      <svg class="stop-icon hidden" viewBox="0 0 24 24" fill="currentColor">
-                        <rect x="6" y="6" width="12" height="12" rx="2"></rect>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </form>
+             <!-- Hidden fields required by JS -->
+             <div class="hidden">
+               <input type="text" id="jobType">
+               <input type="number" id="jobInterval">
+               <input type="text" id="jobCron">
+               <select id="jobReportId"></select>
+               <input type="text" id="jobWebhookUrl">
+               <select id="jobWebhookMethod"></select>
+               <select id="jobExportSource"></select>
+               <select id="jobExportFormat"></select>
+               <textarea id="jobChatMessagePrompt"></textarea>
+               <input type="text" id="jobChatMessageProvider">
+               <input type="number" id="jobChatMessageMaxTurns">
+               <select id="jobWorkflowId"></select>
+               
+               <div id="jobTypeField"></div>
+               <div id="jobIntervalField"></div>
+               <div id="jobCronField"></div>
+               <div id="jobReportField"></div>
+               <div id="jobWebhookUrlField"></div>
+               <div id="jobWebhookMethodField"></div>
+               <div id="jobExportSourceField"></div>
+               <div id="jobExportFormatField"></div>
+               <div id="jobChatMessagePromptField"></div>
+               <div id="jobChatMessageProviderField"></div>
+               <div id="jobChatMessageMaxTurnsField"></div>
+               <div id="jobRunWorkflowField"></div>
+             </div>
+
+             <div class="settings-mcp-form-actions">
+               <button class="settings-mcp-cancel-btn" id="jobCancelBtn">Cancel</button>
+               <button class="settings-mcp-save-btn" id="jobSaveBtn">Save</button>
+             </div>
+             <p id="jobFormStatus"></p>
           </div>
-          <p class="disclaimer">Claude is AI and can make mistakes. Please double-check responses.</p>
         </div>
       </div>
 
-      <!-- Right Sidebar -->
-      <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-          <div class="sidebar-tabs" id="sidebarTabs">
-            <button class="sidebar-tab active" data-tab="progress" id="tabProgress">Progress</button>
-            <button class="sidebar-tab" data-tab="context" id="tabContext">Context</button>
-            <button class="sidebar-tab" data-tab="artifact" id="tabArtifact" disabled>Artifact</button>
-          </div>
-          <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
-          </button>
+      <!-- DATABASE VIEW -->
+      <div class="db-view hidden" id="dbView">
+        <header class="db-header">
+           <button class="db-back-btn hidden" id="dbBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+           <h1 class="db-title">Database Explorer</h1>
+        </header>
+        <div class="db-content">
+           <div class="db-stats-banner">
+              <div class="db-stat-card"><span class="db-stat-value" id="dbStatTables">0</span><span class="db-stat-label">Tables</span></div>
+              <div class="db-stat-card"><span class="db-stat-value" id="dbStatSize">0MB</span><span class="db-stat-label">Size</span></div>
+              <div class="db-stat-card"><span class="db-stat-value" id="dbStatIndexes">0</span></div>
+              <div class="db-stat-card"><span class="db-stat-value" id="dbStatVersion"></span></div>
+              <div id="dbExtensions"></div>
+           </div>
+           <div class="db-panels">
+              <div class="db-table-list-panel" id="dbTableList"></div>
+              <div class="db-detail-panel" id="dbDetailPanel">
+                 <div id="dbTabs" class="hidden"></div>
+                 <div id="dbDataTab">
+                    <div id="dbDataToolbar">
+                       <input type="text" id="dbSearchInput">
+                       <select id="dbPageSize"></select>
+                       <span id="dbPageInfo"></span>
+                       <button id="dbPrevPage"></button>
+                       <button id="dbNextPage"></button>
+                    </div>
+                    <div id="dbDataTableWrapper">
+                       <table id="dbDataTable"><thead id="dbDataThead"></thead><tbody id="dbDataTbody"></tbody></table>
+                    </div>
+                 </div>
+                 <div id="dbSchemaTab" class="hidden"><tbody id="dbSchemaTbody"></tbody></div>
+                 <div id="dbIndexesTab" class="hidden"><tbody id="dbIndexesTbody"></tbody></div>
+              </div>
+           </div>
         </div>
-
-        <!-- Progress Panel -->
-        <div class="sidebar-panel active" id="progressPanel">
-          <!-- ... existing content ... -->
-        </div>
-
-        <!-- Context Panel -->
-        <div class="sidebar-panel" id="contextPanel">
-          <div class="context-usage-header">
-            <div class="usage-info">
-              <span class="usage-label">Context Usage</span>
-              <span id="contextUsageValue" class="usage-value">0 / 200k tokens</span>
-            </div>
-            <div class="usage-meter-container">
-              <div id="contextUsageBar" class="usage-meter-bar" style="width: 0%"></div>
-            </div>
-            <p class="context-hint">Estimated token usage for the current project context.</p>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-              </svg>
-              <span>Project / Entity</span>
-            </div>
-            <div class="context-project-info">
-              <input type="text" id="contextProjectName" class="context-input" placeholder="Project name (e.g. My Website)" />
-              <textarea id="contextProjectDesc" class="context-textarea" rows="3" placeholder="High-level goal or brand identity..."></textarea>
-            </div>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
-              </svg>
-              <span>Database Sources</span>
-            </div>
-            <div class="context-db-sources">
-              <p class="context-hint">Select tables to include in this project's context.</p>
-              <div id="contextTableList" class="context-list">
-                <!-- Tables with checkboxes will be added here -->
-                <div class="empty-state">No tables available</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                <polyline points="22 4 12 14.01 9 11.01"></polyline>
-              </svg>
-              <span>Google Drive</span>
-            </div>
-            <div class="context-gdrive-sources">
-              <p class="context-hint">Pin documents or folders as context.</p>
-              <div id="contextGDriveList" class="context-list">
-                <div class="empty-state">No files pinned</div>
-              </div>
-              <button class="context-add-btn" id="contextPinGDriveBtn">+ Pin Drive File</button>
-            </div>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22.54 6.42a2.78 2.82 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.82 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.82 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.82 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path>
-                <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon>
-              </svg>
-              <span>YouTube Videos</span>
-            </div>
-            <div class="context-youtube-sources">
-              <p class="context-hint">Transcript & metadata context.</p>
-              <div id="contextYouTubeList" class="context-list">
-                <div class="empty-state">No videos pinned</div>
-              </div>
-              <button class="context-add-btn" id="contextPinYouTubeBtn">+ Pin YouTube URL</button>
-            </div>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="9" y1="3" x2="9" y2="21"></line>
-              </svg>
-              <span>Notion Workspace</span>
-            </div>
-            <div class="context-notion-sources">
-              <p class="context-hint">Pin pages or databases as project context.</p>
-              <div id="contextNotionList" class="context-list">
-                <div class="empty-state">No pages pinned</div>
-              </div>
-              <button class="context-add-btn" id="contextPinNotionBtn">+ Pin Notion Page</button>
-            </div>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-              </svg>
-              <span>ClickUp Workspace</span>
-            </div>
-            <div class="context-clickup-sources">
-              <p class="context-hint">Sync specific lists or folders.</p>
-              <div id="contextClickUpList" class="context-list">
-                <div class="empty-state">No lists pinned</div>
-              </div>
-              <button class="context-add-btn" id="contextPinClickUpBtn">+ Pin ClickUp List</button>
-            </div>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-              </svg>
-              <span>Web Sources</span>
-            </div>
-            <div class="context-web-sources">
-              <p class="context-hint">Links to monitor or use as workflow context.</p>
-              <div id="contextWebList" class="context-list">
-                <!-- Added URLs will appear here -->
-                <div class="empty-state">No URLs added</div>
-              </div>
-              <div class="context-input-group">
-                <input type="url" id="contextWebInput" class="context-input" placeholder="https://example.com..." />
-                <button class="context-icon-btn" id="contextAddWebBtn" title="Add URL">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-              </svg>
-              <span>Pinned Assets</span>
-            </div>
-            <div class="context-pinned-assets">
-              <p class="context-hint">Images, videos, or documents from your Vault.</p>
-              <div id="contextPinnedAssets" class="context-list">
-                <!-- Pinned assets will be added here -->
-                <div class="empty-state">No assets pinned</div>
-              </div>
-              <button class="context-add-btn" id="contextPinAssetBtn">+ Pin from Vault</button>
-            </div>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
-              <span>Instructions</span>
-            </div>
-            <div class="context-instructions">
-              <p class="context-hint">These instructions are automatically appended to your chats.</p>
-              <textarea id="contextActiveInstructions" class="context-textarea" rows="6" placeholder="Specific rules for this project..."></textarea>
-              <button class="context-save-btn" id="saveContextBtn">Update Context</button>
-            </div>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-header">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"></path>
-              </svg>
-              <span>Active Tools</span>
-            </div>
-            <div class="context-tools-list" id="contextToolsList">
-              <div class="empty-state">No specific tools pinned</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Artifact Panel -->
-        <div class="sidebar-panel" id="artifactPanel">
-          <div class="artifact-header">
-            <div class="artifact-title-row">
-              <span class="artifact-lang-badge" id="artifactLangBadge"></span>
-              <span class="artifact-title" id="artifactTitle">Untitled</span>
-            </div>
-            <div class="artifact-version-info" id="artifactVersionInfo">v1</div>
-          </div>
-
-          <!-- Code Editor -->
-          <div class="code-editor-wrap" id="codeEditorWrap" style="display:none">
-            <div class="line-numbers" id="lineNumbers"></div>
-            <textarea class="code-editor" id="codeEditor" spellcheck="false"></textarea>
-          </div>
-
-          <!-- Document Editor -->
-          <div class="doc-editor-wrap" id="docEditorWrap" style="display:none">
-            <div class="doc-toolbar" id="docToolbar">
-              <button data-cmd="bold" title="Bold" aria-label="Bold"><b>B</b></button>
-              <button data-cmd="italic" title="Italic" aria-label="Italic"><i>I</i></button>
-              <button data-cmd="strikeThrough" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
-              <span class="doc-toolbar-sep"></span>
-              <button data-cmd="formatBlock" data-val="H1" title="Heading 1" aria-label="Heading 1">H1</button>
-              <button data-cmd="formatBlock" data-val="H2" title="Heading 2" aria-label="Heading 2">H2</button>
-              <span class="doc-toolbar-sep"></span>
-              <button data-cmd="insertUnorderedList" title="Bullet list" aria-label="Bulleted list">&bull;</button>
-              <button data-cmd="insertOrderedList" title="Numbered list" aria-label="Numbered list">1.</button>
-            </div>
-            <div class="doc-editor" id="docEditor" contenteditable="true"></div>
-          </div>
-
-          <!-- Artifact Actions -->
-          <div class="artifact-actions" id="artifactActions">
-            <button class="artifact-action-btn" id="artifactCopyBtn" title="Copy">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              <span>Copy</span>
-            </button>
-            <button class="artifact-action-btn" id="artifactDownloadBtn" title="Download">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              <span>Download</span>
-            </button>
-            <div class="artifact-version-btns">
-              <button class="artifact-action-btn" id="artifactUndoBtn" title="Undo" aria-label="Undo" disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-              </button>
-              <button class="artifact-action-btn" id="artifactRedoBtn" title="Redo" aria-label="Redo" disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
-      </aside>
-
-      <!-- Selection Floating Toolbar -->
-      <div class="selection-toolbar" id="selectionToolbar" style="display:none">
-        <button data-action="explain">Explain</button>
-        <button data-action="improve">Improve</button>
-        <button data-action="fix">Fix</button>
-        <button data-action="ask">Ask...</button>
       </div>
-    </div>
 
-      <!-- Settings View -->
+      <!-- SETTINGS VIEW (Fully Restored) -->
       <div class="settings-view hidden" id="settingsView">
         <header class="settings-header">
-          <button type="button" class="settings-back-btn" id="settingsBackBtn" title="Back" aria-label="Back">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-          </button>
+          <button class="settings-back-btn" id="settingsBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
           <h1 class="settings-title">Settings</h1>
         </header>
         <div class="settings-content">
-          <section class="settings-section">
-            <h2 class="settings-section-title">Provider tokens</h2>
-            <p class="settings-section-desc">API keys are stored locally and override .env. They are never sent to the client in full.</p>
-            <form id="settingsSecretsForm">
-              <input type="text" name="settingsSecretsUsername" autocomplete="username" value="" class="settings-input" aria-hidden="true" style="display:none" />
+           
+           <section class="settings-section">
+              <h2 class="settings-section-title">API Keys</h2>
+              <div class="settings-field"><label>Anthropic API Key</label><input type="password" id="settingsAnthropicKey" class="settings-input"><button id="settingsAnthropicToggle" class="hidden">Show</button><span id="settingsAnthropicMasked"></span></div>
+              <div class="settings-field"><label>Composio API Key</label><input type="password" id="settingsComposioKey" class="settings-input"><button id="settingsComposioToggle" class="hidden">Show</button><span id="settingsComposioMasked"></span></div>
+              <div class="settings-field"><label>Smithery API Key</label><input type="password" id="settingsSmitheryKey" class="settings-input"><button id="settingsSmitheryToggle" class="hidden">Show</button><span id="settingsSmitheryMasked"></span></div>
+              
+              <!-- DataForSEO (Hidden but restored) -->
+              <div class="hidden">
+                <input type="text" id="settingsDataforseoUsername"><button id="settingsDataforseoUsernameToggle"></button><span id="settingsDataforseoUsernameMasked"></span>
+                <input type="password" id="settingsDataforseoPassword"><button id="settingsDataforseoPasswordToggle"></button><span id="settingsDataforseoPasswordMasked"></span>
+              </div>
+
+              <button class="settings-save-btn" id="settingsSaveKeysBtn">Save Keys</button>
+              <p id="settingsKeysStatus"></p>
+           </section>
+
+           <section class="settings-section">
+              <h2 class="settings-section-title">MCP Servers</h2>
+              <div id="settingsMcpList"></div>
+              <button class="settings-add-mcp-btn" id="settingsAddMcpBtn">Add MCP Server</button>
+              <div id="settingsMcpForm" class="hidden settings-mcp-form">
+                 <h3 id="settingsMcpFormTitle">Add Server</h3>
+                 <input type="text" id="settingsMcpName" class="settings-input" placeholder="Name">
+                 <select id="settingsMcpType" class="settings-select"><option value="http">HTTP</option><option value="local">Local</option></select>
+                 <div id="settingsMcpHttpFields"><input type="text" id="settingsMcpUrl" class="settings-input" placeholder="URL"><input type="text" id="settingsMcpHeaders" class="settings-input" placeholder="Headers"></div>
+                 <div id="settingsMcpLocalFields" class="hidden"><input type="text" id="settingsMcpCommand" class="settings-input" placeholder="Command"><input type="text" id="settingsMcpArgs" class="settings-input" placeholder="Args"></div>
+                 <div class="settings-mcp-form-actions">
+                    <button id="settingsMcpCancelBtn" class="settings-mcp-cancel-btn">Cancel</button>
+                    <button id="settingsMcpSaveBtn" class="settings-mcp-save-btn">Save</button>
+                 </div>
+              </div>
+              <p id="settingsMcpStatus"></p>
+           </section>
+
+           <section class="settings-section">
+              <h2 class="settings-section-title">Browser Automation</h2>
+              <div class="settings-field"><label><input type="checkbox" id="settingsBrowserEnabled"> Enable</label></div>
+              <div id="settingsBrowserOptions" class="hidden">
+                 <select id="settingsBrowserBackend" class="settings-select"><option value="builtin">Built-in</option></select>
+                 <div id="settingsAgentBrowserHint"></div>
+                 <div id="settingsBrowserBuiltinOptions">
+                    <select id="settingsBrowserMode" class="settings-select"><option value="chrome">Chrome</option></select>
+                    <div id="settingsCdpPortField"><input type="number" id="settingsBrowserCdpPort" class="settings-input"></div>
+                    <label><input type="checkbox" id="settingsBrowserHeadless"> Headless</label>
+                 </div>
+              </div>
+              <button class="settings-save-btn" id="settingsSaveBrowserBtn">Save</button>
+              <p id="settingsBrowserStatus"></p>
+           </section>
+
+           <section class="settings-section">
+              <h2 class="settings-section-title">Instructions & Permissions</h2>
+              <div class="settings-field"><label>Global Instructions</label><textarea id="settingsGlobalInstructions" class="settings-textarea"></textarea></div>
+              <div id="settingsFolderInstructionsList"></div>
+              <button id="settingsAddFolderInstructionBtn" class="settings-add-btn">+ Folder Instruction</button>
+              
+              <div id="settingsFolderInstructionForm" class="hidden">
+                 <input type="text" id="settingsFolderPath">
+                 <textarea id="settingsFolderInstructionsText"></textarea>
+                 <button id="settingsFolderInstructionSaveBtn">Save</button>
+                 <button id="settingsFolderInstructionCancelBtn">Cancel</button>
+              </div>
+
               <div class="settings-field">
-                <label for="settingsAnthropicKey">Anthropic API key</label>
-                <div class="settings-input-row">
-                  <input
-                    type="password"
-                    id="settingsAnthropicKey"
-                    name="anthropic_api_key"
-                    class="settings-input"
-                    placeholder="sk-ant-..."
-                    autocomplete="new-password"
-                  />
-                  <button type="button" class="settings-toggle-visibility" id="settingsAnthropicToggle" title="Show">Show</button>
-                </div>
-                <span class="settings-masked" id="settingsAnthropicMasked"></span>
+                 <label>Permission Mode</label>
+                 <select id="settingsPermissionMode" class="settings-select">
+                    <option value="bypassPermissions">Full Auto</option>
+                    <option value="default">Strict</option>
+                 </select>
               </div>
-              <div class="settings-field">
-                <label for="settingsComposioKey">Composio API key</label>
-                <div class="settings-input-row">
-                  <input
-                    type="password"
-                    id="settingsComposioKey"
-                    name="composio_api_key"
-                    class="settings-input"
-                    placeholder="Composio key"
-                    autocomplete="new-password"
-                  />
-                  <button type="button" class="settings-toggle-visibility" id="settingsComposioToggle" title="Show">Show</button>
-                </div>
-                <span class="settings-masked" id="settingsComposioMasked"></span>
-              </div>
-              <div class="settings-field">
-                <label for="settingsSmitheryKey">Smithery API key</label>
-                <div class="settings-input-row">
-                  <input
-                    type="password"
-                    id="settingsSmitheryKey"
-                    name="smithery_api_key"
-                    class="settings-input"
-                    placeholder="Smithery key"
-                    autocomplete="new-password"
-                  />
-                  <button type="button" class="settings-toggle-visibility" id="settingsSmitheryToggle" title="Show">Show</button>
-                </div>
-                <span class="settings-masked" id="settingsSmitheryMasked"></span>
-              </div>
-              <div class="settings-field">
-                <label for="settingsDataforseoUsername">DataForSEO username</label>
-                <div class="settings-input-row">
-                  <input
-                    type="text"
-                    id="settingsDataforseoUsername"
-                    name="dataforseo_username"
-                    class="settings-input"
-                    placeholder="login@example.com"
-                    autocomplete="username"
-                  />
-                  <button type="button" class="settings-toggle-visibility" id="settingsDataforseoUsernameToggle" title="Show">Show</button>
-                </div>
-                <span class="settings-masked" id="settingsDataforseoUsernameMasked"></span>
-              </div>
-              <div class="settings-field">
-                <label for="settingsDataforseoPassword">DataForSEO password</label>
-                <div class="settings-input-row">
-                  <input
-                    type="password"
-                    id="settingsDataforseoPassword"
-                    name="dataforseo_password"
-                    class="settings-input"
-                    placeholder="DataForSEO password"
-                    autocomplete="current-password"
-                  />
-                  <button type="button" class="settings-toggle-visibility" id="settingsDataforseoPasswordToggle" title="Show">Show</button>
-                </div>
-                <span class="settings-masked" id="settingsDataforseoPasswordMasked"></span>
-              </div>
-              <button type="button" class="settings-save-btn" id="settingsSaveKeysBtn">Save keys</button>
-            </form>
-            <p class="settings-status" id="settingsKeysStatus"></p>
-          </section>
-          <section class="settings-section">
-            <h2 class="settings-section-title">MCP servers</h2>
-            <p class="settings-section-desc">Add custom MCP servers via HTTP or local launch settings. They are merged with Composio and Smithery.</p>
-            <div class="settings-mcp-list" id="settingsMcpList"></div>
-            <button type="button" class="settings-add-mcp-btn" id="settingsAddMcpBtn">Add MCP server</button>
-            <div class="settings-mcp-form hidden" id="settingsMcpForm">
-              <h3 class="settings-mcp-form-title" id="settingsMcpFormTitle">Add MCP server</h3>
-              <div class="settings-field">
-                <label for="settingsMcpName">Name</label>
-                <input type="text" id="settingsMcpName" class="settings-input" placeholder="e.g. my_tools" />
-              </div>
-              <div class="settings-field">
-                <label>Type</label>
-                <select id="settingsMcpType" class="settings-select">
-                  <option value="http">HTTP (remote URL)</option>
-                  <option value="local">Local (command)</option>
-                </select>
-              </div>
-              <div class="settings-mcp-type-fields" id="settingsMcpHttpFields">
-                <div class="settings-field">
-                  <label for="settingsMcpUrl">URL</label>
-                  <input type="url" id="settingsMcpUrl" class="settings-input" placeholder="https://..." />
-                </div>
-                <div class="settings-field">
-                  <label for="settingsMcpHeaders">Headers (JSON)</label>
-                  <input type="text" id="settingsMcpHeaders" class="settings-input" placeholder='{"Authorization": "Bearer ..."}' />
-                </div>
-              </div>
-              <div class="settings-mcp-type-fields hidden" id="settingsMcpLocalFields">
-                <div class="settings-field">
-                  <label for="settingsMcpCommand">Command</label>
-                  <input type="text" id="settingsMcpCommand" class="settings-input" placeholder="npx" />
-                </div>
-                <div class="settings-field">
-                  <label for="settingsMcpArgs">Arguments (comma-separated)</label>
-                  <input type="text" id="settingsMcpArgs" class="settings-input" placeholder="-y, @modelcontextprotocol/server-filesystem, /path" />
-                </div>
-              </div>
-              <div class="settings-mcp-form-actions">
-                <button type="button" class="settings-mcp-cancel-btn" id="settingsMcpCancelBtn">Cancel</button>
-                <button type="button" class="settings-mcp-save-btn" id="settingsMcpSaveBtn">Save</button>
-              </div>
-            </div>
-            <p class="settings-status" id="settingsMcpStatus"></p>
-          </section>
-          <section class="settings-section">
-            <h2 class="settings-section-title">Browser automation</h2>
-            <p class="settings-section-desc">Enable the AI agent to navigate websites, fill forms, take screenshots, and interact with web pages.</p>
-            <div class="settings-field">
-              <label class="settings-checkbox-label">
-                <input type="checkbox" id="settingsBrowserEnabled" />
-                <span>Enable browser automation</span>
-              </label>
-            </div>
-            <div id="settingsBrowserOptions" class="hidden">
-              <div class="settings-field">
-                <label for="settingsBrowserBackend">Backend</label>
-                <select id="settingsBrowserBackend" class="settings-select">
-                  <option value="builtin">Built-in (Playwright)</option>
-                  <option value="agent-browser">Vercel agent-browser</option>
-                </select>
-                <span class="settings-hint hidden" id="settingsAgentBrowserHint">Requires <code>npm i -g agent-browser && agent-browser install</code></span>
-              </div>
-              <div id="settingsBrowserBuiltinOptions">
-                <div class="settings-field">
-                  <label for="settingsBrowserMode">Mode</label>
-                  <select id="settingsBrowserMode" class="settings-select">
-                    <option value="clawd">Isolated Chromium</option>
-                    <option value="chrome">Connect to Chrome (CDP)</option>
-                  </select>
-                </div>
-                <div class="settings-field settings-cdp-port hidden" id="settingsCdpPortField">
-                  <label for="settingsBrowserCdpPort">CDP port</label>
-                  <input type="number" id="settingsBrowserCdpPort" class="settings-input" value="9222" min="1" max="65535" />
-                </div>
-                <div class="settings-field">
-                  <label class="settings-checkbox-label">
-                    <input type="checkbox" id="settingsBrowserHeadless" />
-                    <span>Headless mode (no visible window)</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-            <button type="button" class="settings-save-btn" id="settingsSaveBrowserBtn">Save browser settings</button>
-            <p class="settings-status" id="settingsBrowserStatus"></p>
-          </section>
-
-          <!-- Instructions Section -->
-          <section class="settings-section">
-            <h3>Instructions</h3>
-            <p class="settings-hint">Standing instructions appended to every chat message. Global instructions apply always; folder instructions apply when relevant.</p>
-
-            <div class="settings-field">
-              <label for="settingsGlobalInstructions">Global instructions</label>
-              <textarea id="settingsGlobalInstructions" class="settings-textarea" rows="4" placeholder="e.g. Always respond professionally. Prefer TypeScript over JavaScript."></textarea>
-            </div>
-
-            <h4 style="margin-top:1rem;">Folder instructions</h4>
-            <div id="settingsFolderInstructionsList"></div>
-            <button type="button" class="settings-add-btn" id="settingsAddFolderInstructionBtn">+ Add folder instruction</button>
-
-            <!-- Folder instruction form (hidden by default) -->
-            <div class="settings-mcp-form hidden" id="settingsFolderInstructionForm">
-              <div class="settings-field">
-                <label for="settingsFolderPath">Folder path</label>
-                <input type="text" id="settingsFolderPath" class="settings-input" placeholder="/Users/.../my-project" />
-              </div>
-              <div class="settings-field">
-                <label for="settingsFolderInstructionsText">Instructions for this folder</label>
-                <textarea id="settingsFolderInstructionsText" class="settings-textarea" rows="3" placeholder="e.g. React app using Tailwind CSS. Use functional components."></textarea>
-              </div>
-              <div class="settings-mcp-form-actions">
-                <button type="button" class="settings-save-btn" id="settingsFolderInstructionSaveBtn">Save</button>
-                <button type="button" class="settings-cancel-btn" id="settingsFolderInstructionCancelBtn">Cancel</button>
-              </div>
-            </div>
-
-            <button type="button" class="settings-save-btn" id="settingsSaveInstructionsBtn" style="margin-top:1rem;">Save instructions</button>
-            <p class="settings-status" id="settingsInstructionsStatus"></p>
-          </section>
-
-          <!-- Permissions -->
-          <section class="settings-section">
-            <h3>Permissions</h3>
-            <p class="settings-hint">Control how Claude asks for permission before using tools. "Full auto" skips all prompts; "Supervised" asks before file writes and destructive operations; "Strict" asks before every tool call; "Plan only" lets Claude plan but not act.</p>
-
-            <div class="settings-field">
-              <label for="settingsPermissionMode">Permission mode</label>
-              <select id="settingsPermissionMode" class="settings-input">
-                <option value="bypassPermissions">Full auto (bypass all)</option>
-                <option value="acceptEdits">Supervised (auto-approve reads)</option>
-                <option value="default">Strict (ask for everything)</option>
-                <option value="plan">Plan only (no execution)</option>
-              </select>
-            </div>
-
-            <h4 style="margin-top:1rem;">Allowed directories</h4>
-            <p class="settings-hint">Directories where tool operations are always allowed without prompting.</p>
-            <div id="settingsAllowedDirectoriesList"></div>
-            <div class="settings-mcp-form" id="settingsAddDirectoryForm" style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
-              <input type="text" id="settingsNewDirectoryPath" class="settings-input" placeholder="/Users/.../my-project" style="flex:1;" />
-              <button type="button" class="settings-add-btn" id="settingsAddDirectoryBtn">+ Add</button>
-            </div>
-
-            <div class="settings-field" style="margin-top:1rem;">
-              <label class="settings-checkbox-label">
-                <input type="checkbox" id="settingsFileDeleteConfirmation" checked />
-                Always confirm before deleting files
-              </label>
-            </div>
-
-            <button type="button" class="settings-save-btn" id="settingsSavePermissionsBtn" style="margin-top:1rem;">Save permissions</button>
-            <p class="settings-status" id="settingsPermissionsStatus"></p>
-          </section>
-
-          <!-- Document Generation -->
-          <section class="settings-section">
-            <h3>Document Generation</h3>
-            <p class="settings-hint">Claude can generate Excel, PowerPoint, and PDF files. Configure where generated documents are saved.</p>
-
-            <div class="settings-field">
-              <label for="settingsDocOutputDir">Output directory</label>
-              <input type="text" id="settingsDocOutputDir" class="settings-input" placeholder="~/Documents/generated" />
-            </div>
-
-            <button type="button" class="settings-save-btn" id="settingsSaveDocumentsBtn" style="margin-top:1rem;">Save documents settings</button>
-            <p class="settings-status" id="settingsDocumentsStatus"></p>
-          </section>
-
-          <!-- Plugins -->
-          <section class="settings-section">
-            <h3>Plugins</h3>
-            <p class="settings-hint">Install and manage plugins that extend Claude's capabilities with new tools, skills, and sub-agents.</p>
-
-            <div class="settings-field">
-              <label for="settingsPluginUrl">Install from Git URL</label>
-              <div style="display:flex;gap:0.5rem;">
-                <input type="text" id="settingsPluginUrl" class="settings-input" placeholder="https://github.com/user/claude-plugin-name.git" style="flex:1;" />
-                <button type="button" class="settings-save-btn" id="settingsInstallPluginBtn">Install</button>
-              </div>
-            </div>
-            <p class="settings-status" id="settingsPluginsStatus"></p>
-
-            <div id="settingsPluginsList" style="margin-top:1rem;"></div>
-          </section>
-
-          <!-- Account section -->
-          <section class="settings-section" id="settingsAccountSection" style="display:none">
-            <h3>Account</h3>
-            <div id="settingsUserInfo" style="margin-bottom:1rem;font-size:0.875rem;color:var(--text-secondary)"></div>
-            <button type="button" class="settings-save-btn" id="settingsSignOutBtn" style="background:var(--error-color,#e53e3e);border-color:var(--error-color,#e53e3e);">Sign Out</button>
-          </section>
-        </div>
-      </div>
-      <!-- Database Explorer View -->
-      <div class="db-view hidden" id="dbView">
-        <header class="db-header">
-        <button type="button" class="db-back-btn" id="dbBackBtn" title="Back" aria-label="Back">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-          </button>
-          <h1 class="db-title">Database Explorer</h1>
-        </header>
-        <div class="db-content">
-          <!-- Stats Banner -->
-          <div class="db-stats-banner" id="dbStatsBanner">
-            <div class="db-stat-card">
-              <span class="db-stat-value" id="dbStatTables">-</span>
-              <span class="db-stat-label">Tables</span>
-            </div>
-            <div class="db-stat-card">
-              <span class="db-stat-value" id="dbStatSize">-</span>
-              <span class="db-stat-label">Total Size</span>
-            </div>
-            <div class="db-stat-card">
-              <span class="db-stat-value" id="dbStatIndexes">-</span>
-              <span class="db-stat-label">Indexes</span>
-            </div>
-            <div class="db-stat-card">
-              <span class="db-stat-value" id="dbStatVersion">-</span>
-              <span class="db-stat-label">Postgres</span>
-            </div>
-            <div class="db-extensions" id="dbExtensions"></div>
-          </div>
-          <!-- Two-panel layout -->
-          <div class="db-panels">
-            <!-- Left: Table List -->
-            <div class="db-table-list-panel">
-              <h3 class="db-panel-title">Tables</h3>
-              <div class="db-table-list" id="dbTableList">
-                <div class="db-loading">Loading tables...</div>
-              </div>
-            </div>
-            <!-- Right: Table Detail -->
-            <div class="db-detail-panel" id="dbDetailPanel">
-              <div class="db-detail-placeholder">
-                <p>Select a table to view its data</p>
-              </div>
-              <!-- Tabs -->
-              <div class="db-tabs hidden" id="dbTabs">
-                <button class="db-tab active" data-tab="data">Data</button>
-                <button class="db-tab" data-tab="schema">Schema</button>
-                <button class="db-tab" data-tab="indexes">Indexes</button>
-              </div>
-              <!-- Data Tab -->
-              <div class="db-tab-content" id="dbDataTab">
-                <div class="db-data-toolbar" id="dbDataToolbar">
-                  <input type="text" class="db-search-input" id="dbSearchInput" placeholder="Search rows..." autocomplete="off" />
-                  <div class="db-pagination">
-                    <select class="db-page-size" id="dbPageSize">
-                      <option value="25" selected>25 rows</option>
-                      <option value="50">50 rows</option>
-                      <option value="100">100 rows</option>
-                    </select>
-                    <span class="db-page-info" id="dbPageInfo"></span>
-                    <button class="db-page-btn" id="dbPrevPage" disabled>&laquo; Prev</button>
-                    <button class="db-page-btn" id="dbNextPage" disabled>Next &raquo;</button>
-                  </div>
-                </div>
-                <div class="db-data-table-wrapper" id="dbDataTableWrapper">
-                  <table class="db-data-table" id="dbDataTable">
-                    <thead id="dbDataThead"></thead>
-                    <tbody id="dbDataTbody"></tbody>
-                  </table>
-                </div>
-              </div>
-              <!-- Schema Tab -->
-              <div class="db-tab-content hidden" id="dbSchemaTab">
-                <table class="db-schema-table">
-                  <thead>
-                    <tr>
-                      <th>Column</th>
-                      <th>Type</th>
-                      <th>Nullable</th>
-                      <th>Default</th>
-                      <th>Constraints</th>
-                    </tr>
-                  </thead>
-                  <tbody id="dbSchemaTbody"></tbody>
-                </table>
-              </div>
-              <!-- Indexes Tab -->
-              <div class="db-tab-content hidden" id="dbIndexesTab">
-                <table class="db-indexes-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Definition</th>
-                      <th>Unique</th>
-                      <th>Size</th>
-                      <th>Scans</th>
-                    </tr>
-                  </thead>
-                  <tbody id="dbIndexesTbody"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <!-- Reports View -->
-      <div class="reports-view hidden" id="reportsView">
-        <header class="reports-header">
-          <button type="button" class="reports-back-btn" id="reportsBackBtn" title="Back" aria-label="Back">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-          </button>
-          <h1 class="reports-title" id="reportsTitle">Reports</h1>
-          <button type="button" class="reports-new-btn" id="reportsNewBtn">New Report</button>
-        </header>
-        <div class="reports-content">
-          <!-- Report List Sub-view -->
-          <div class="reports-list-view" id="reportsListView">
-            <div class="reports-unavailable hidden" id="reportsUnavailable">
-              <p>Sign in to use Reports</p>
-            </div>
-            <!-- Summary Stats -->
-            <div class="report-summary-cards" id="reportSummaryCards">
-              <div class="report-stat-card">
-                <span class="report-stat-value" id="reportStatChats">-</span>
-                <span class="report-stat-label">Total Chats</span>
-              </div>
-              <div class="report-stat-card">
-                <span class="report-stat-value" id="reportStatMessages">-</span>
-                <span class="report-stat-label">Total Messages</span>
-              </div>
-              <div class="report-stat-card">
-                <span class="report-stat-value" id="reportStatDays">-</span>
-                <span class="report-stat-label">Active Days</span>
-              </div>
-              <div class="report-stat-card">
-                <span class="report-stat-value" id="reportStatAvg">-</span>
-                <span class="report-stat-label">Msgs/Day</span>
-              </div>
-            </div>
-            <!-- Templates -->
-            <h3 class="reports-section-title">Templates</h3>
-            <div class="report-templates-grid" id="reportTemplatesGrid">
-              <div class="template-card" data-template="usage_over_time">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                <span>Usage Over Time</span>
-              </div>
-              <div class="template-card" data-template="provider_breakdown">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
-                <span>Provider Breakdown</span>
-              </div>
-              <div class="template-card" data-template="tool_usage">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-                <span>Tool Usage</span>
-              </div>
-              <div class="template-card" data-template="custom">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                <span>Custom Report</span>
-              </div>
-            </div>
-            <!-- Saved Reports -->
-            <h3 class="reports-section-title">Saved Reports</h3>
-            <div class="saved-reports-list" id="savedReportsList">
-              <div class="reports-empty-state" id="savedReportsEmpty">No saved reports. Create one from a template or build custom.</div>
-            </div>
-          </div>
-          <!-- Report Builder Sub-view -->
-          <div class="reports-builder-view hidden" id="reportsBuilderView">
-            <div class="report-builder-controls">
-              <div class="builder-field">
-                <label for="builderReportName">Report Name</label>
-                <input type="text" id="builderReportName" class="settings-input" placeholder="My Report" />
-              </div>
-              <div class="builder-field">
-                <label for="builderSource">Data Source</label>
-                <select id="builderSource" class="settings-select">
-                  <option value="messages">Messages</option>
-                  <option value="chats">Chats</option>
-                  <option value="tool_calls">Tool Calls</option>
-                  <option value="attachments">Attachments</option>
-                </select>
-              </div>
-              <div class="builder-field">
-                <label for="builderDays">Date Range</label>
-                <select id="builderDays" class="settings-select">
-                  <option value="7">Last 7 days</option>
-                  <option value="30" selected>Last 30 days</option>
-                  <option value="90">Last 90 days</option>
-                  <option value="365">All time</option>
-                </select>
-              </div>
-              <div class="builder-field">
-                <label for="builderGroupBy">Group By</label>
-                <select id="builderGroupBy" class="settings-select">
-                  <option value="day">Day</option>
-                  <option value="week">Week</option>
-                  <option value="month">Month</option>
-                  <option value="provider">Provider</option>
-                  <option value="model">Model</option>
-                </select>
-              </div>
-              <div class="builder-field">
-                <label for="builderChartType">Chart Type</label>
-                <select id="builderChartType" class="settings-select">
-                  <option value="line">Line</option>
-                  <option value="bar">Bar</option>
-                  <option value="doughnut">Doughnut</option>
-                  <option value="horizontalBar">Horizontal Bar</option>
-                  <option value="table">Table</option>
-                </select>
-              </div>
-              <div class="builder-actions">
-                <button type="button" class="builder-run-btn" id="builderRunBtn">Run</button>
-                <button type="button" class="builder-save-btn" id="builderSaveBtn">Save</button>
-              </div>
-            </div>
-            <div class="report-builder-preview" id="reportBuilderPreview">
-              <div class="report-chart-container" id="reportChartContainer">
-                <canvas id="reportChart"></canvas>
-              </div>
-              <div class="report-table-container hidden" id="reportTableContainer">
-                <table class="report-data-table" id="reportDataTable">
-                  <thead id="reportDataThead"></thead>
-                  <tbody id="reportDataTbody"></tbody>
-                </table>
-              </div>
-              <div class="report-no-data hidden" id="reportNoData">No data yet — click Run to generate the report</div>
-            </div>
-          </div>
+              <div id="settingsAllowedDirectoriesList"></div>
+              <input type="text" id="settingsNewDirectoryPath">
+              <button id="settingsAddDirectoryBtn">Add</button>
+              <label><input type="checkbox" id="settingsFileDeleteConfirmation"> Confirm Deletes</label>
+              
+              <button class="settings-save-btn" id="settingsSaveInstructionsBtn">Save Instructions</button>
+              <button class="settings-save-btn" id="settingsSavePermissionsBtn">Save Permissions</button>
+              <p id="settingsInstructionsStatus"></p>
+              <p id="settingsPermissionsStatus"></p>
+           </section>
+           
+           <!-- Hidden but restored -->
+           <div class="hidden">
+              <input type="text" id="settingsDocOutputDir">
+              <button id="settingsSaveDocumentsBtn"></button>
+              <p id="settingsDocumentsStatus"></p>
+              <input type="text" id="settingsPluginUrl">
+              <button id="settingsInstallPluginBtn"></button>
+              <p id="settingsPluginsStatus"></p>
+              <div id="settingsPluginsList"></div>
+              <div id="settingsAccountSection"><div id="settingsUserInfo"></div><button id="settingsSignOutBtn"></button></div>
+           </div>
         </div>
       </div>
 
-      <!-- Jobs View -->
-      <div class="jobs-view hidden" id="jobsView">
-        <header class="jobs-header">
-        <button type="button" class="jobs-back-btn" id="jobsBackBtn" title="Back" aria-label="Back">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-          </button>
-          <h1 class="jobs-title">Workflows</h1>
-          <button type="button" class="jobs-new-btn" id="jobsNewBtn">New Workflow</button>
-        </header>
-        <div class="jobs-content">
-          <div class="jobs-unavailable hidden" id="jobsUnavailable">
-            <p>Sign in to use Workflows</p>
-          </div>
-          <div class="jobs-list" id="jobsList">
-            <div class="jobs-empty-state" id="jobsEmpty">No workflows yet. Click 'New Workflow' to get started.</div>
-          </div>
-          <!-- Job Create/Edit Form -->
-          <div class="jobs-form hidden" id="jobsForm">
-            <h3 class="jobs-form-title" id="jobsFormTitle">New Workflow</h3>
-            <div class="settings-field">
-              <label for="jobName">Name</label>
-              <input type="text" id="jobName" class="settings-input" placeholder="My automation workflow" />
-            </div>
-            <div class="settings-field">
-              <label for="jobDescription">Description</label>
-              <input type="text" id="jobDescription" class="settings-input" placeholder="Optional description" />
-            </div>
-            <div class="settings-field">
-              <label for="jobSchedulePreset">Schedule</label>
-              <select id="jobSchedulePreset" class="settings-select">
-                <option value="once">Run once</option>
-                <option value="hourly">Every hour</option>
-                <option value="daily">Every day at 8 am</option>
-                <option value="weekly">Every Monday at 8 am</option>
-                <option value="monthly">1st of every month at 8 am</option>
-                <option value="custom">Custom (advanced)…</option>
-              </select>
-            </div>
-            <!-- Run-once date/time -->
-            <div class="settings-field" id="jobExecuteAtField">
-              <label for="jobExecuteAt">Run at</label>
-              <input type="datetime-local" id="jobExecuteAt" class="settings-input" />
-            </div>
-            <!-- Advanced fields (hidden unless Custom is selected) -->
-            <div class="settings-field hidden" id="jobTypeField">
-              <label for="jobType">Schedule Type</label>
-              <select id="jobType" class="settings-select">
-                <option value="one_time">One-time</option>
-                <option value="recurring">Recurring (interval)</option>
-                <option value="cron">Cron Expression</option>
-              </select>
-            </div>
-            <div class="settings-field hidden" id="jobIntervalField">
-              <label for="jobInterval">Interval (seconds)</label>
-              <input type="number" id="jobInterval" class="settings-input" placeholder="3600" min="60" />
-            </div>
-            <div class="settings-field hidden" id="jobCronField">
-              <label for="jobCron">Cron Expression</label>
-              <input type="text" id="jobCron" class="settings-input" placeholder="0 * * * *" />
-            </div>
-            <div class="settings-field">
-              <label for="jobActionType">Action Type</label>
-              <select id="jobActionType" class="settings-select">
-                <option value="report_generation">Report Generation</option>
-                <option value="webhook">Webhook</option>
-                <option value="data_export">Data Export</option>
-                <option value="chat_message">Chat Message</option>
-                <option value="run_workflow">Run Workflow</option>
-              </select>
-            </div>
-            <!-- Report generation config -->
-            <div class="settings-field" id="jobReportField">
-              <label for="jobReportId">Saved Report</label>
-              <select id="jobReportId" class="settings-select">
-                <option value="">Select a saved report...</option>
-              </select>
-            </div>
-            <!-- Webhook config -->
-            <div class="settings-field hidden" id="jobWebhookUrlField">
-              <label for="jobWebhookUrl">Webhook URL</label>
-              <input type="url" id="jobWebhookUrl" class="settings-input" placeholder="https://..." />
-            </div>
-            <div class="settings-field hidden" id="jobWebhookMethodField">
-              <label for="jobWebhookMethod">HTTP Method</label>
-              <select id="jobWebhookMethod" class="settings-select">
-                <option value="POST">POST</option>
-                <option value="GET">GET</option>
-                <option value="PUT">PUT</option>
-              </select>
-            </div>
-            <!-- Data export config -->
-            <div class="settings-field hidden" id="jobExportSourceField">
-              <label for="jobExportSource">Export Source</label>
-              <select id="jobExportSource" class="settings-select">
-                <option value="messages">Messages</option>
-                <option value="providers">Provider Usage</option>
-              </select>
-            </div>
-            <div class="settings-field hidden" id="jobExportFormatField">
-              <label for="jobExportFormat">Export Format</label>
-              <select id="jobExportFormat" class="settings-select">
-                <option value="json">JSON</option>
-                <option value="csv">CSV</option>
-              </select>
-            </div>
-            <!-- Chat message config -->
-            <div class="settings-field hidden" id="jobChatMessagePromptField">
-              <label for="jobChatMessagePrompt">Message Prompt</label>
-              <textarea id="jobChatMessagePrompt" class="settings-textarea" rows="3" placeholder="Ask the provider to run on schedule"></textarea>
-            </div>
-            <div class="settings-field hidden" id="jobChatMessageProviderField">
-              <label for="jobChatMessageProvider">Provider</label>
-              <input type="text" id="jobChatMessageProvider" class="settings-input" placeholder="claude" />
-            </div>
-            <div class="settings-field hidden" id="jobChatMessageMaxTurnsField">
-              <label for="jobChatMessageMaxTurns">Max Turns</label>
-              <input type="number" id="jobChatMessageMaxTurns" class="settings-input" min="1" max="100" placeholder="20" />
-            </div>
-            <!-- Run workflow config -->
-            <div class="settings-field hidden" id="jobRunWorkflowField">
-              <label for="jobWorkflowId">Saved Workflow</label>
-              <select id="jobWorkflowId" class="settings-select">
-                <option value="">Select a workflow...</option>
-              </select>
-            </div>
-            <div class="settings-mcp-form-actions">
-              <button type="button" class="settings-mcp-cancel-btn" id="jobCancelBtn">Cancel</button>
-              <button type="button" class="settings-mcp-save-btn" id="jobSaveBtn">Save Workflow</button>
-            </div>
-            <p class="settings-status" id="jobFormStatus"></p>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==================== VAULT VIEW ==================== -->
+      <!-- VAULT VIEW -->
       <div class="vault-view hidden" id="vaultView">
-        <header class="vault-header">
-          <button type="button" class="vault-back-btn" id="vaultBackBtn" title="Back" aria-label="Back">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-          </button>
-          <h1 class="vault-title">Vault</h1>
-          <button type="button" class="vault-action-btn" id="vaultNewFolderBtn">New Folder</button>
-          <button type="button" class="vault-action-btn vault-upload-btn" id="vaultUploadBtn">Upload</button>
-          <input type="file" id="vaultFileInput" multiple hidden />
-        </header>
-        <nav class="vault-breadcrumbs" id="vaultBreadcrumbs">
-          <span class="vault-crumb vault-crumb-root" data-id="">Downloads</span>
-        </nav>
-        <div class="vault-toolbar">
-          <select class="vault-filter-select" id="vaultSourceFilter">
-            <option value="">All Sources</option>
-            <option value="upload">Uploads</option>
-            <option value="chat">Chat</option>
-            <option value="ai_generated">AI Generated</option>
-            <option value="generated_doc">Generated Documents</option>
-          </select>
-          <select class="vault-sort-select" id="vaultSortSelect">
-            <option value="created_at:desc">Newest</option>
-            <option value="created_at:asc">Oldest</option>
-            <option value="file_name:asc">Name A-Z</option>
-            <option value="file_name:desc">Name Z-A</option>
-            <option value="file_size:desc">Largest</option>
-            <option value="file_size:asc">Smallest</option>
-          </select>
-          <button type="button" class="vault-view-toggle" id="vaultViewToggle" title="Toggle view" aria-label="Toggle view">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="7" height="7"></rect>
-              <rect x="14" y="3" width="7" height="7"></rect>
-              <rect x="3" y="14" width="7" height="7"></rect>
-              <rect x="14" y="14" width="7" height="7"></rect>
-            </svg>
-          </button>
-        </div>
-        <div class="vault-content" id="vaultContent">
-          <div class="vault-unavailable hidden" id="vaultUnavailable">
-            <p>Sign in to use Vault</p>
-          </div>
-          <div class="vault-grid" id="vaultGrid"></div>
-          <div class="vault-empty hidden" id="vaultEmpty">No files yet. Upload a file or create a folder to get started.</div>
-        </div>
+         <header class="vault-header">
+           <button class="vault-back-btn hidden" id="vaultBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+           <h1 class="vault-title">Vault</h1>
+           <button class="settings-save-btn" id="vaultUploadBtn">Upload</button>
+           <input type="file" id="vaultFileInput" hidden multiple>
+         </header>
+         <div class="vault-content">
+            <div id="vaultBreadcrumbs"></div>
+            <div style="display:flex; gap:8px; margin-bottom:16px;">
+               <select id="vaultSourceFilter" class="settings-select" style="width:auto;"></select>
+               <select id="vaultSortSelect" class="settings-select" style="width:auto;"></select>
+               <button id="vaultViewToggle" class="control-btn"></button>
+            </div>
+            <div id="vaultGrid" class="quick-actions-grid"></div>
+            <div id="vaultContent"></div>
+            <div id="vaultUnavailable" class="hidden"></div>
+            <div id="vaultEmpty" class="hidden"></div>
+         </div>
       </div>
 
-    </div><!-- end main-content -->
+      <!-- REPORTS VIEW -->
+      <div class="reports-view hidden" id="reportsView">
+         <header class="reports-header">
+            <button class="reports-back-btn hidden" id="reportsBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+            <h1 class="reports-title">Reports</h1>
+            <button class="settings-save-btn" id="reportsNewBtn">New</button>
+         </header>
+         <div class="reports-content">
+            <div id="reportsListView">
+               <div id="reportSummaryCards">
+                  <div id="reportStatChats"></div><div id="reportStatMessages"></div><div id="reportStatDays"></div><div id="reportStatAvg"></div>
+               </div>
+               <div id="savedReportsList"></div>
+            </div>
+            <div id="reportsBuilderView" class="hidden">
+               <input type="text" id="builderReportName">
+               <select id="builderSource"></select>
+               <select id="builderDays"></select>
+               <select id="builderGroupBy"></select>
+               <select id="builderChartType"></select>
+               <button id="builderRunBtn"></button>
+               <button id="builderSaveBtn"></button>
+               <div id="reportBuilderPreview">
+                  <div id="reportChartContainer"><canvas id="reportChart"></canvas></div>
+                  <div id="reportTableContainer"><table id="reportDataTable"><thead id="reportDataThead"></thead><tbody id="reportDataTbody"></tbody></table></div>
+                  <div id="reportNoData"></div>
+               </div>
+            </div>
+            <div id="reportsUnavailable" class="hidden"></div>
+         </div>
+      </div>
 
-    <!-- Right Sidebar Expand Button (visible when collapsed) -->
-    <button class="right-sidebar-expand-btn" id="rightSidebarExpand" title="Expand sidebar" aria-label="Expand sidebar">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="15 18 9 12 15 6"></polyline>
-      </svg>
-    </button>
+    </main>
   </div>
 
-  <!-- Permission Dialog Overlay -->
+  <!-- Dialogs -->
   <div class="permission-dialog-overlay hidden" id="permissionDialogOverlay">
-    <div class="permission-dialog">
-      <h3 class="permission-dialog-title">Permission Required</h3>
-      <p class="permission-dialog-desc">Claude wants to use a tool that requires your approval.</p>
-      <div class="permission-dialog-details">
-        <div class="permission-dialog-field">
-          <span class="permission-dialog-label">Tool:</span>
-          <span class="permission-dialog-value" id="permissionToolName"></span>
-        </div>
-        <div class="permission-dialog-field">
-          <span class="permission-dialog-label">Input:</span>
-          <pre class="permission-dialog-input" id="permissionToolInput"></pre>
-        </div>
-      </div>
-      <div class="permission-dialog-actions">
-        <button type="button" class="permission-allow-btn" id="permissionAllowBtn">Allow</button>
-        <button type="button" class="permission-deny-btn" id="permissionDenyBtn">Deny</button>
-      </div>
-    </div>
+     <div id="permissionToolName"></div>
+     <div id="permissionToolInput"></div>
+     <button id="permissionAllowBtn">Allow</button>
+     <button id="permissionDenyBtn">Deny</button>
   </div>
-
-  <!-- Command Palette Modal -->
   <div class="command-palette-overlay hidden" id="commandPalette">
-    <div class="command-palette">
-      <div class="command-palette-search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-        <input type="text" id="commandPaletteInput" placeholder="Search chats, assets, or commands... (Type '/' for actions)" autocomplete="off" />
-        <div class="command-palette-hint">Esc to close</div>
-      </div>
-      <div class="command-palette-results" id="commandPaletteResults">
-        <!-- Results will be grouped by category -->
-      </div>
-      <div class="command-palette-footer">
-        <div class="footer-item"><span>&uarr;&darr;</span> to navigate</div>
-        <div class="footer-item"><span>Enter</span> to select</div>
-        <div class="footer-item"><span>/</span> for commands</div>
-      </div>
-    </div>
+     <input type="text" id="commandPaletteInput">
+     <div id="commandPaletteResults"></div>
   </div>
 
   <script src="db-explorer.js"></script>

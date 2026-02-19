@@ -70,6 +70,15 @@
     currentSession = null;
   }
 
+  async function resetPassword(email) {
+    if (!supabaseClient) throw new Error('Auth not initialized');
+    const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname + (window.location.search || '')
+    });
+    if (error) throw error;
+    return data;
+  }
+
   function getAuthToken() {
     return currentSession?.access_token || null;
   }
@@ -93,6 +102,7 @@
     signUp,
     signIn,
     signOut,
+    resetPassword,
     getAuthToken,
     getAuthHeaders,
     getUser,

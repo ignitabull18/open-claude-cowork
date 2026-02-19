@@ -35,7 +35,8 @@ import {
   getUserSettingsPath,
   clearUserSettingsCache,
   cloneSettings,
-  isSecureMode
+  isSecureMode,
+  normalizeUserSettings
 } from './utils/settings-utils.js';
 import { buildSystemPrompt, buildWorkflowSystemPrompt, fetchDirectExternalContext } from './utils/prompt-utils.js';
 import { listIntegrationItems } from './utils/context-integrations-list.js';
@@ -2110,7 +2111,11 @@ app.put('/api/settings', requireAuth, rateLimit.settings, (req, res) => {
     res.json(response);
   } catch (err) {
     console.error('[SETTINGS] PUT error:', err);
-    sendInternalError(res, err);
+    const msg = err.message || String(err);
+    if (msg.includes('Invalid user settings path') || msg.includes('Unable to persist')) {
+      return res.status(500).json({ error: 'Could not save settings. The server may not have write access to the settings file. Try again or contact support.' });
+    }
+    return res.status(500).json({ error: 'Could not save settings. Try again or contact support.' });
   }
 });
 

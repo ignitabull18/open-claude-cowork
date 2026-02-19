@@ -268,7 +268,10 @@
       const response = await fetch(apiUrl('/api/jobs'), {
         method: 'POST', headers: buildHeaders(), body: JSON.stringify(data)
       });
-      if (!response.ok) throw new Error('HTTP ' + response.status);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || body.message || 'HTTP ' + response.status);
+      }
       return await response.json();
     },
     getJob: async function (jobId) {
@@ -280,7 +283,10 @@
       const response = await fetch(apiUrl('/api/jobs/' + jobId), {
         method: 'PATCH', headers: buildHeaders(), body: JSON.stringify(data)
       });
-      if (!response.ok) throw new Error('HTTP ' + response.status);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || body.message || 'HTTP ' + response.status);
+      }
       return await response.json();
     },
     deleteJob: async function (jobId) {

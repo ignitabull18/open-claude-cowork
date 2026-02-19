@@ -26,21 +26,25 @@ const tabProgress = document.getElementById('tabProgress');
 const tabContext = document.getElementById('tabContext');
 const tabArtifact = document.getElementById('tabArtifact');
 
-// Initialize right sidebar tabs
+function showSidebarTab(tabName) {
+  const tabs = document.querySelectorAll('.sidebar-tab');
+  const panels = document.querySelectorAll('.sidebar-panel');
+  
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+  panels.forEach(p => p.classList.toggle('hidden', p.id !== `${tabName}Panel`));
+  
+  // Specific panel handling if needed
+  if (tabName === 'artifact' && !artifactPanel.classList.contains('hidden')) {
+    tabArtifact.disabled = false;
+  }
+}
+
+// Update the existing click listener to use this helper
 if (sidebarTabs) {
   sidebarTabs.addEventListener('click', (e) => {
     const tab = e.target.closest('.sidebar-tab');
     if (!tab || tab.disabled) return;
-
-    const target = tab.dataset.tab;
-    
-    // Update active tab UI
-    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.toggle('active', t === tab));
-    
-    // Update panels
-    progressPanel.style.display = target === 'progress' ? 'flex' : 'none';
-    contextPanel.style.display = target === 'context' ? 'flex' : 'none';
-    artifactPanel.style.display = target === 'artifact' ? 'flex' : 'none';
+    showSidebarTab(tab.dataset.tab);
   });
 }
 
@@ -417,6 +421,28 @@ function updateContextPanel(chat) {
   document.getElementById('contextProjectDesc').value = project.desc || '';
   document.getElementById('contextActiveInstructions').value = meta.instructions || '';
   
+  // Update Context Bar
+  const ctxProjectName = document.getElementById('ctxProjectName');
+  if (ctxProjectName) {
+    ctxProjectName.textContent = project.name || 'No Project';
+    ctxProjectName.onclick = () => {
+      showSidebarTab('context');
+      if (!sidebar.classList.contains('visible')) toggleSidebar();
+    };
+  }
+  
+  const ctxDbPill = document.getElementById('ctxDbPill');
+  const ctxDbCount = document.getElementById('ctxDbCount');
+  if (ctxDbPill && ctxDbCount) {
+    const tableCount = (db.tables || []).length;
+    ctxDbCount.textContent = `${tableCount} Table${tableCount === 1 ? '' : 's'}`;
+    ctxDbPill.classList.toggle('hidden', tableCount === 0);
+    ctxDbPill.onclick = () => {
+      showSidebarTab('context');
+      if (!sidebar.classList.contains('visible')) toggleSidebar();
+    };
+  }
+
   loadContextTables(db.tables || []);
   renderPinnedAssets(assets.pinnedIds || []);
   renderWebSources(meta.webSources || []);
@@ -1234,6 +1260,7 @@ function setupAuthListeners() {
   if (!authForm) return;
 
   // Tab switching
+  const authForgotPasswordBtn = document.getElementById('authForgotPasswordBtn');
   document.querySelectorAll('.auth-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       authMode = tab.dataset.tab;
@@ -1242,28 +1269,55 @@ function setupAuthListeners() {
       if (authDisplayNameField) {
         authDisplayNameField.classList.toggle('hidden', authMode !== 'signup');
       }
+      if (authForgotPasswordBtn) authForgotPasswordBtn.classList.toggle('hidden', authMode !== 'signin');
       hideAuthMessages();
     });
   });
+  if (authForgotPasswordBtn) authForgotPasswordBtn.classList.toggle('hidden', authMode !== 'signin');
+
+  // Forgot password
+  if (authForgotPasswordBtn) {
+    authForgotPasswordBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      hideAuthMessages();
+      const email = authEmail?.value?.trim();
+      if (!email) {
+        showAuthError('Enter your email first.');
+        return;
+      }
+      authForgotPasswordBtn.disabled = true;
+      try {
+        await window.appAuth.resetPassword(email);
+        showAuthInfo('Check your email for the reset link.');
+      } catch (err) {
+        showAuthError(err.message || 'Failed to send reset link.');
+      } finally {
+        authForgotPasswordBtn.disabled = false;
+      }
+    });
+  }
 
   // Form submit
   authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     hideAuthMessages();
+    const submitLabel = authMode === 'signup' ? 'Sign Up' : 'Sign In';
     authSubmitBtn.disabled = true;
+    authSubmitBtn.textContent = authMode === 'signup' ? 'Signing up…' : 'Signing in…';
 
     try {
       if (authMode === 'signup') {
         await window.appAuth.signUp(authEmail.value, authPassword.value, authDisplayName?.value);
         showAuthInfo('Check your email to confirm your account, then sign in.');
-        authSubmitBtn.disabled = false;
       } else {
         const data = await window.appAuth.signIn(authEmail.value, authPassword.value);
         showAppAfterAuth(data.session);
       }
     } catch (err) {
       showAuthError(err.message);
+    } finally {
       authSubmitBtn.disabled = false;
+      authSubmitBtn.textContent = submitLabel;
     }
   });
 
@@ -1329,7 +1383,31 @@ function showAppError(message, timeoutMs = 5000) {
   }
 
   toast.textContent = msg;
+  toast.classList.remove('hidden', 'success');
+  toast.setAttribute('role', 'alert');
+
+  if (appErrorTimer) clearTimeout(appErrorTimer);
+  appErrorTimer = setTimeout(() => {
+    toast.classList.add('hidden');
+  }, timeoutMs);
+}
+
+function showAppSuccess(message, timeoutMs = 5000) {
+  const msg = message ? String(message) : 'Done.';
+  let toast = document.getElementById('appErrorToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'appErrorToast';
+    toast.className = 'app-toast hidden';
+    toast.setAttribute('role', 'status');
+    document.body.appendChild(toast);
+  }
+
+  toast.textContent = msg;
   toast.classList.remove('hidden');
+  toast.classList.add('success');
+  toast.setAttribute('role', 'status');
+  toast.setAttribute('aria-live', 'polite');
 
   if (appErrorTimer) clearTimeout(appErrorTimer);
   appErrorTimer = setTimeout(() => {
@@ -2053,6 +2131,8 @@ function showSettingsKeysStatus(msg, isError) {
 
 async function saveSettingsKeys() {
   if (!window.electronAPI || typeof window.electronAPI.updateSettings !== 'function') return;
+  const saveBtn = settingsSaveKeysBtn;
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
   const anthropic = settingsAnthropicKey ? settingsAnthropicKey.value.trim() : '';
   const composio = settingsComposioKey ? settingsComposioKey.value.trim() : '';
   const smithery = settingsSmitheryKey ? settingsSmitheryKey.value.trim() : '';
@@ -2075,6 +2155,8 @@ async function saveSettingsKeys() {
     showSettingsKeysStatus('Saved.');
   } catch (err) {
     showSettingsKeysStatus(err.message || 'Save failed', true);
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save keys'; }
   }
 }
 
@@ -3753,6 +3835,7 @@ async function handleSendMessage(e) {
     }
 
     console.error('[Chat] Error sending message:', error);
+    showAppError(error.message || 'Failed to send message.');
     const loadingIndicator = contentDiv.querySelector('.loading-indicator');
     if (loadingIndicator) loadingIndicator.remove();
 
@@ -5518,38 +5601,103 @@ function initJobsView() {
 
 function setupJobsEventListeners() {
   const newJobBtn = document.getElementById('jobsNewBtn');
-  if (newJobBtn) newJobBtn.addEventListener('click', () => openJobForm(null));
+  if (newJobBtn) newJobBtn.addEventListener('click', () => renderWorkflowBuilder(null));
 
   const jobFormCancel = document.getElementById('jobCancelBtn');
-  if (jobFormCancel) jobFormCancel.addEventListener('click', () => hideJobForm());
+  if (jobFormCancel) jobFormCancel.addEventListener('click', () => loadJobs());
+}
 
-  const jobFormSave = document.getElementById('jobSaveBtn');
-  if (jobFormSave) jobFormSave.addEventListener('click', () => saveJob());
+function renderWorkflowBuilder(job = null) {
+  const container = document.getElementById('jobsList');
+  if (!container) return;
+  
+  container.innerHTML = `
+    <div class="workflow-builder-canvas">
+      <div class="builder-step">
+        <div class="step-header">
+          <div class="step-number">1</div>
+          <div class="step-title">Trigger & Schedule</div>
+        </div>
+        <div class="builder-controls">
+          <div class="settings-field">
+            <label>Workflow Name</label>
+            <input type="text" id="builderJobName" class="settings-input" value="${job ? (job.name || '') : ''}" placeholder="e.g. Weekly Report">
+          </div>
+          <div class="settings-field">
+            <label>Schedule</label>
+            <select id="builderJobSchedule" class="settings-select">
+              <option value="once" ${job?.job_type === 'one_time' ? 'selected' : ''}>Run once</option>
+              <option value="hourly" ${job?.job_type === 'recurring' ? 'selected' : ''}>Every hour</option>
+              <option value="daily" ${job?.job_type === 'recurring' ? 'selected' : ''}>Every day</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
-  const jobSchedulePreset = document.getElementById('jobSchedulePreset');
-  if (jobSchedulePreset) jobSchedulePreset.addEventListener('change', () => applySchedulePreset());
+      <div class="builder-step">
+        <div class="step-header">
+          <div class="step-number">2</div>
+          <div class="step-title">Action & Prompt</div>
+        </div>
+        <div class="settings-field">
+          <label>What should Claude do?</label>
+          <textarea id="builderJobPrompt" class="settings-textarea" rows="4" placeholder="e.g. Summarize the latest messages and send a notification...">${job?.action_config?.prompt || ''}</textarea>
+        </div>
+      </div>
 
-  const jobTypeSelect = document.getElementById('jobType');
-  if (jobTypeSelect) jobTypeSelect.addEventListener('change', () => {
-    const val = jobTypeSelect.value;
-    document.getElementById('jobExecuteAtField')?.classList.toggle('hidden', val !== 'one_time');
-    document.getElementById('jobIntervalField')?.classList.toggle('hidden', val !== 'recurring');
-    document.getElementById('jobCronField')?.classList.toggle('hidden', val !== 'cron');
-  });
+      <div class="builder-step">
+        <div class="step-header">
+          <div class="step-number">3</div>
+          <div class="step-title">Target & Output</div>
+        </div>
+        <div class="settings-field">
+          <label>Output Type</label>
+          <select id="builderJobAction" class="settings-select">
+            <option value="chat_message" ${job?.action_type === 'chat_message' ? 'selected' : ''}>Internal Chat Message</option>
+            <option value="webhook" ${job?.action_type === 'webhook' ? 'selected' : ''}>External Webhook</option>
+          </select>
+        </div>
+      </div>
 
-  const actionTypeSelect = document.getElementById('jobActionType');
-  if (actionTypeSelect) actionTypeSelect.addEventListener('change', () => {
-    const val = actionTypeSelect.value;
-    document.getElementById('jobReportField')?.classList.toggle('hidden', val !== 'report_generation');
-    document.getElementById('jobExportSourceField')?.classList.toggle('hidden', val !== 'data_export');
-    document.getElementById('jobExportFormatField')?.classList.toggle('hidden', val !== 'data_export');
-    document.getElementById('jobWebhookUrlField')?.classList.toggle('hidden', val !== 'webhook');
-    document.getElementById('jobWebhookMethodField')?.classList.toggle('hidden', val !== 'webhook');
-    document.getElementById('jobChatMessagePromptField')?.classList.toggle('hidden', val !== 'chat_message');
-    document.getElementById('jobChatMessageProviderField')?.classList.toggle('hidden', val !== 'chat_message');
-    document.getElementById('jobChatMessageMaxTurnsField')?.classList.toggle('hidden', val !== 'chat_message');
-    document.getElementById('jobRunWorkflowField')?.classList.toggle('hidden', val !== 'run_workflow');
-  });
+      <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:12px;">
+        <button class="settings-mcp-cancel-btn" onclick="loadJobs()">Cancel</button>
+        <button class="settings-save-btn" id="builderSaveBtn">${job ? 'Update' : 'Create'} Workflow</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('builderSaveBtn').onclick = async () => {
+    const name = document.getElementById('builderJobName').value;
+    const schedule = document.getElementById('builderJobSchedule').value;
+    const prompt = document.getElementById('builderJobPrompt').value;
+    const action = document.getElementById('builderJobAction').value;
+
+    if (!name || !prompt) {
+      showAppError('Name and Prompt are required');
+      return;
+    }
+
+    try {
+      const payload = {
+        name,
+        job_type: schedule === 'once' ? 'one_time' : 'recurring',
+        action_type: action,
+        action_config: { prompt },
+        status: 'active'
+      };
+
+      if (job) {
+        await window.electronAPI.updateJob(job.id, payload);
+      } else {
+        await window.electronAPI.createJob(payload);
+      }
+      
+      showAppSuccess('Workflow saved');
+      loadJobs();
+    } catch (err) {
+      showAppError('Failed to save workflow');
+    }
+  };
 }
 
 // Maps a saved job back to its friendly schedule preset value
@@ -5783,6 +5931,7 @@ async function saveJob() {
     }
     hideJobForm();
     loadJobs();
+    showAppSuccess(editingJobId ? 'Workflow updated.' : 'Workflow created.');
   } catch (err) {
     console.error('Save job error:', err);
     showAppError('Error saving job: ' + err.message);
@@ -5806,8 +5955,8 @@ async function loadJobs() {
       return;
     }
     list.forEach(j => {
-      const statusClass = { active: 'status-active', paused: 'status-paused', completed: 'status-completed', failed: 'status-failed' }[j.status] || '';
-      const nextRun = j.next_run_at ? new Date(j.next_run_at).toLocaleString() : 'N/A';
+      const statusClass = j.status === 'active' ? 'status-active' : 'status-idle';
+      const nextRun = j.next_run_at ? new Date(j.next_run_at).toLocaleString() : 'Not scheduled';
 
       const card = document.createElement('div');
       card.className = 'job-card';
@@ -5819,81 +5968,62 @@ async function loadJobs() {
       });
       card.addEventListener('dragend', () => card.classList.remove('dragging'));
 
-      const header = document.createElement('div');
-      header.className = 'job-card-header';
-      const title = document.createElement('div');
-      title.className = 'job-card-title';
-      title.textContent = j.name;
-      const badges = document.createElement('div');
-      badges.className = 'job-badges';
-      const typeBadge = document.createElement('span');
-      typeBadge.className = 'job-type-badge';
-      typeBadge.textContent = j.job_type;
-      const statusBadge = document.createElement('span');
-      statusBadge.className = 'job-status-badge ' + statusClass;
-      statusBadge.textContent = j.status;
-      badges.appendChild(typeBadge);
-      badges.appendChild(statusBadge);
-      header.appendChild(title);
-      header.appendChild(badges);
-
+      const info = document.createElement('div');
+      info.className = 'job-info';
+      
+      const name = document.createElement('div');
+      name.className = 'job-name';
+      name.textContent = j.name || 'Untitled Workflow';
+      
       const meta = document.createElement('div');
-      meta.className = 'job-card-meta';
-      meta.textContent = 'Action: ' + j.action_type + ' \u00B7 Next: ' + nextRun + ' \u00B7 Runs: ' + (j.run_count || 0);
+      meta.className = 'job-meta';
+      meta.textContent = `${j.job_type} \u00B7 ${j.action_type} \u00B7 Next: ${nextRun}`;
+      
+      info.appendChild(name);
+      info.appendChild(meta);
+
+      const status = document.createElement('div');
+      status.className = `job-status ${statusClass}`;
+      status.textContent = j.status;
 
       const actions = document.createElement('div');
       actions.className = 'job-card-actions';
-
-      const editBtn = document.createElement('button');
-      editBtn.className = 'btn-sm';
-      editBtn.textContent = 'Edit';
-      editBtn.addEventListener('click', () => openJobForm(j));
-
-      const toggleBtn = document.createElement('button');
-      toggleBtn.className = 'btn-sm';
-      toggleBtn.textContent = j.status === 'active' ? 'Pause' : 'Resume';
-      toggleBtn.addEventListener('click', async () => {
-        try {
-          const newStatus = j.status === 'active' ? 'paused' : 'active';
-          await window.electronAPI.updateJob(j.id, { status: newStatus });
-          loadJobs();
-        } catch (err) { console.error(err); }
-      });
+      actions.style.display = 'flex';
+      actions.style.gap = '8px';
 
       const runNowBtn = document.createElement('button');
-      runNowBtn.className = 'btn-sm';
-      runNowBtn.textContent = 'Run Now';
-      runNowBtn.addEventListener('click', async () => {
+      runNowBtn.className = 'control-btn';
+      runNowBtn.title = 'Run Now';
+      runNowBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+      runNowBtn.onclick = async (e) => {
+        e.stopPropagation();
         try { await window.electronAPI.runJob(j.id); loadJobs(); } catch (err) { console.error(err); }
-      });
+      };
 
-      const historyBtn = document.createElement('button');
-      historyBtn.className = 'btn-sm';
-      historyBtn.textContent = 'History';
-      historyBtn.addEventListener('click', () => toggleJobExecutions(j.id));
+      const editBtn = document.createElement('button');
+      editBtn.className = 'control-btn';
+      editBtn.title = 'Edit';
+      editBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+      editBtn.onclick = (e) => { e.stopPropagation(); openJobForm(j); };
 
       const delBtn = document.createElement('button');
-      delBtn.className = 'btn-sm btn-danger';
-      delBtn.textContent = 'Delete';
-      delBtn.addEventListener('click', async () => {
+      delBtn.className = 'control-btn';
+      delBtn.title = 'Delete';
+      delBtn.style.color = 'var(--accent-danger)';
+      delBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
         if (!confirm('Delete this workflow?')) return;
         try { await window.electronAPI.deleteJob(j.id); loadJobs(); } catch (err) { console.error(err); }
-      });
+      };
 
-      actions.appendChild(editBtn);
-      actions.appendChild(toggleBtn);
       actions.appendChild(runNowBtn);
-      actions.appendChild(historyBtn);
+      actions.appendChild(editBtn);
       actions.appendChild(delBtn);
 
-      const execPanel = document.createElement('div');
-      execPanel.className = 'job-executions-panel hidden';
-      execPanel.id = 'jobExec_' + j.id;
-
-      card.appendChild(header);
-      card.appendChild(meta);
+      card.appendChild(info);
+      card.appendChild(status);
       card.appendChild(actions);
-      card.appendChild(execPanel);
       container.appendChild(card);
     });
   } catch (err) {
