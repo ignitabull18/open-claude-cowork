@@ -24,3 +24,10 @@ assets
 .cursor
 *.md
 !server/README.md
+
+# Tests
+tests
+vitest.config.js
+playwright.config.js
+docker-compose.yml
+CLAUDE.md

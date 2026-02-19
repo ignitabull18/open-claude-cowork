@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -97,6 +99,15 @@ function ensureComposioClient() {
 
 function createRateLimiter({ windowMs, maxRequests }) {
   const buckets = new Map();
+  // Periodically purge expired buckets to prevent memory leaks
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [key, bucket] of buckets) {
+      if (now > bucket.resetAt) buckets.delete(key);
+    }
+  }, Math.max(windowMs * 2, 60_000));
+  cleanupInterval.unref(); // Don't prevent process exit
+
   return function rateLimit(req, res, next) {
     const key = req.ip || 'unknown';
     const now = Date.now();
@@ -109,6 +120,7 @@ function createRateLimiter({ windowMs, maxRequests }) {
 
     bucket.count += 1;
     if (bucket.count > maxRequests) {
+      res.set('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
       return res.status(429).json({ error: 'Too many requests. Please retry later.' });
     }
 
@@ -334,6 +346,23 @@ let isShuttingDown = false;
 const rendererPath = path.join(__dirname, '..', 'renderer');
 const rendererIndexPath = path.join(rendererPath, 'index.html');
 
+// ==================== PRODUCTION HARDENING ====================
+
+// Trust proxy (required behind reverse proxies like nginx/Cloudflare for correct req.ip)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', process.env.TRUST_PROXY || 1);
+}
+
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // CSP varies per deployment; set via CONTENT_SECURITY_POLICY env var or reverse proxy
+  crossOriginEmbedderPolicy: false, // Allow loading CDN resources (Supabase, marked, etc.)
+  crossOriginResourcePolicy: { policy: 'cross-origin' } // Allow cross-origin resource loading for API consumers
+}));
+
+// Response compression
+app.use(compression());
+
 if (fs.existsSync(rendererPath) && fs.existsSync(rendererIndexPath)) {
   app.get('/', (_req, res) => res.sendFile(rendererIndexPath));
 }
@@ -347,10 +376,17 @@ app.get('/health', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
+  const checks = {
+    anthropicKey: !!process.env.ANTHROPIC_API_KEY,
+    supabase: isSupabaseConfigured(),
+    composio: hasComposioApiKey()
+  };
+  const healthy = checks.anthropicKey; // Minimum: need an API key for chat
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
-    providers: getAvailableProviders()
+    providers: getAvailableProviders(),
+    checks
   });
 });
 
@@ -675,7 +711,7 @@ app.use('/api', (req, res, next) => {
   }
   return corsMiddleware(req, res, next);
 });
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 // Helper: check if Supabase is configured
 const isSupabaseConfigured = () => !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -2367,10 +2403,36 @@ app.use('/api', (_req, res) => {
 
 // Serve web UI (renderer) for browser deployment (e.g. Coolify)
 if (fs.existsSync(rendererPath)) {
-  app.use(express.static(rendererPath));
+  app.use(express.static(rendererPath, {
+    maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0,
+    etag: true,
+    lastModified: true
+  }));
 }
 
 if (process.env.NODE_ENV !== 'test') {
+  // ==================== PROCESS ERROR HANDLERS ====================
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[PROCESS] Unhandled rejection:', reason);
+  });
+
+  process.on('uncaughtException', (err) => {
+    console.error('[PROCESS] Uncaught exception:', err);
+    // Give time for logs to flush, then exit — the process is in an undefined state
+    setTimeout(() => process.exit(1), 1000);
+  });
+
+  // ==================== STARTUP VALIDATION ====================
+  if (!process.env.ANTHROPIC_API_KEY || !process.env.ANTHROPIC_API_KEY.trim()) {
+    console.warn('[STARTUP] WARNING: ANTHROPIC_API_KEY is not set. Chat functionality will not work.');
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    if (!process.env.CORS_ORIGINS) {
+      console.warn('[STARTUP] WARNING: CORS_ORIGINS is not set in production. All cross-origin requests will be blocked.');
+    }
+  }
+
   await initializeProviders();
   await initializeComposioSession();
   await initializeSmitheryConnection();
